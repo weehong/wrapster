@@ -24,7 +24,7 @@ test.describe('App', () => {
 
   test('should show loading state during lazy load', async ({ page }) => {
     await page.goto('/', { waitUntil: 'commit' })
-    const loadingOrContent = page.getByText(/Loading...|Home/)
+    const loadingOrContent = page.getByText(/Loading page...|Checking authentication...|Home/)
     await expect(loadingOrContent).toBeVisible()
   })
 })

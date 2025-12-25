@@ -1,20 +1,31 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '@/App'
 
+vi.mock('@/lib/appwrite', () => ({
+  authService: {
+    getCurrentUser: vi.fn(),
+  },
+}))
+
+vi.mock('@/hooks/use-mobile', () => ({
+  useIsMobile: vi.fn().mockReturnValue(false),
+}))
+
 describe('App', () => {
-  beforeEach(() => {
-    localStorage.clear()
+  beforeEach(async () => {
+    const { authService } = await import('@/lib/appwrite')
+    vi.mocked(authService.getCurrentUser).mockResolvedValue(null)
   })
 
   afterEach(() => {
-    localStorage.clear()
+    vi.clearAllMocks()
   })
 
-  it('should render the app with loading fallback initially', () => {
+  it('should render the app with loading spinner initially', () => {
     render(<App />)
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeInTheDocument()
   })
 
   it('should render home page after lazy loading', async () => {
@@ -31,13 +42,14 @@ describe('App', () => {
 })
 
 describe('App routing', () => {
-  beforeEach(() => {
-    localStorage.clear()
+  beforeEach(async () => {
     window.history.pushState({}, '', '/')
+    const { authService } = await import('@/lib/appwrite')
+    vi.mocked(authService.getCurrentUser).mockResolvedValue(null)
   })
 
   afterEach(() => {
-    localStorage.clear()
+    vi.clearAllMocks()
   })
 
   it('should display home page on root path', async () => {
@@ -57,7 +69,6 @@ describe('App routing', () => {
   })
 
   it('should redirect to login when accessing dashboard without auth', async () => {
-    localStorage.removeItem('token')
     window.history.pushState({}, '', '/dashboard')
     render(<App />)
     await waitFor(() => {
@@ -66,7 +77,12 @@ describe('App routing', () => {
   })
 
   it('should display dashboard when authenticated', async () => {
-    localStorage.setItem('token', 'test-token')
+    const { authService } = await import('@/lib/appwrite')
+    vi.mocked(authService.getCurrentUser).mockResolvedValue({
+      $id: '123',
+      email: 'test@test.com',
+    } as never)
+
     window.history.pushState({}, '', '/dashboard')
     render(<App />)
     await waitFor(() => {
