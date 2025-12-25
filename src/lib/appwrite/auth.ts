@@ -19,6 +19,19 @@ export const authService = {
     return account.deleteSession('current')
   },
 
+  async deleteCurrentSession() {
+    return account.deleteSession('current')
+  },
+
+  async hasActiveSession(): Promise<boolean> {
+    try {
+      await account.get()
+      return true
+    } catch {
+      return false
+    }
+  },
+
   async getCurrentUser(): Promise<User | null> {
     try {
       return await account.get()

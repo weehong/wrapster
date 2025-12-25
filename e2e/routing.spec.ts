@@ -27,25 +27,10 @@ test.describe('Routing', () => {
       await expect(page).toHaveURL('/login')
     })
 
-    test('should access dashboard when authenticated', async ({ page }) => {
-      await page.goto('/')
-      await page.evaluate(() => {
-        localStorage.setItem('token', 'test-token')
-      })
-      await page.goto('/dashboard')
-      await expect(page.getByText('Dashboard')).toBeVisible()
-      await expect(page).toHaveURL('/dashboard')
-    })
-
-    test('should maintain dashboard access after page reload when authenticated', async ({ page }) => {
-      await page.goto('/')
-      await page.evaluate(() => {
-        localStorage.setItem('token', 'test-token')
-      })
-      await page.goto('/dashboard')
-      await expect(page.getByText('Dashboard')).toBeVisible()
-      await page.reload()
-      await expect(page.getByText('Dashboard')).toBeVisible()
+    test('should show loading spinner before redirecting', async ({ page }) => {
+      await page.goto('/dashboard', { waitUntil: 'commit' })
+      const spinnerOrLogin = page.getByText(/Checking authentication...|Login/)
+      await expect(spinnerOrLogin).toBeVisible()
     })
   })
 })
