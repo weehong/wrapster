@@ -1,4 +1,4 @@
-import { Box, LayoutDashboard, LogOut } from 'lucide-react'
+import { BarChart3, Box, LayoutDashboard, LogOut, Package, PackageOpen, Tags } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
 import {
@@ -11,16 +11,35 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import { useAuth } from '@/contexts/AuthContext'
 
 const navItems = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
+  { title: 'Packaging', url: '/packaging', icon: Package },
+  { title: 'Unpack', url: '/unpack', icon: PackageOpen },
+  { title: 'Products', url: '/products', icon: Tags },
+  { title: 'Reports', url: '/reports', icon: BarChart3 },
 ]
 
 export function AppSidebar() {
   const location = useLocation()
   const { logout } = useAuth()
+  const { setOpenMobile, isMobile } = useSidebar()
+
+  const handleNavClick = () => {
+    if (isMobile) {
+      setOpenMobile(false)
+    }
+  }
+
+  const handleLogout = () => {
+    if (isMobile) {
+      setOpenMobile(false)
+    }
+    logout()
+  }
 
   return (
     <Sidebar collapsible="icon">
@@ -43,7 +62,7 @@ export function AppSidebar() {
                     isActive={location.pathname === item.url}
                     tooltip={item.title}
                   >
-                    <Link to={item.url}>
+                    <Link to={item.url} onClick={handleNavClick}>
                       <item.icon />
                       <span>{item.title}</span>
                     </Link>
@@ -57,7 +76,7 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={logout} tooltip="Logout" className="cursor-pointer">
+            <SidebarMenuButton onClick={handleLogout} tooltip="Logout" className="cursor-pointer">
               <LogOut />
               <span>Logout</span>
             </SidebarMenuButton>

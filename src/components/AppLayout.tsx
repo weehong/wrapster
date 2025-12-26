@@ -11,11 +11,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-14 items-center gap-2 border-b px-4">
+      <SidebarInset className="flex h-screen flex-col overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
         </header>
-        <main className="flex-1 p-4">{children}</main>
+        <main className="min-h-0 flex-1 overflow-hidden p-4">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   )
