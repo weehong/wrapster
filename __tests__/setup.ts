@@ -8,7 +8,7 @@ class MockIntersectionObserver implements IntersectionObserver {
   readonly thresholds: ReadonlyArray<number> = []
 
   constructor(
-    private callback: IntersectionObserverCallback,
+    _callback: IntersectionObserverCallback,
     _options?: IntersectionObserverInit
   ) {}
 
@@ -88,7 +88,7 @@ const createMatchMedia = (matches: boolean) => ({
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: vi.fn().mockImplementation((query: string) => createMatchMedia(false)),
+  value: vi.fn().mockImplementation((_query: string) => createMatchMedia(false)),
 })
 
 Object.defineProperty(window, 'innerWidth', {

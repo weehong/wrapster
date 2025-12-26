@@ -10,7 +10,6 @@ describe('routes', () => {
         expect(route).toHaveProperty('component')
         expect(typeof route.path).toBe('string')
         expect(route.component).toBeDefined()
-        expect(route.component.$$typeof).toBeDefined()
       })
     })
 

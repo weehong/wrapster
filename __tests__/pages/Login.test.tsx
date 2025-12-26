@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,7 +9,6 @@ import Login from '@/pages/Login'
 import { AuthProvider } from '@/contexts/AuthContext'
 
 const mockLogin = vi.fn()
-const mockDeleteCurrentSession = vi.fn()
 
 vi.mock('@/lib/appwrite', () => ({
   authService: {

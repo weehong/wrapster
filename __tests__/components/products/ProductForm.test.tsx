@@ -23,6 +23,7 @@ const mockProduct: Product = {
   $createdAt: '2024-01-01T00:00:00.000Z',
   $updatedAt: '2024-01-01T00:00:00.000Z',
   $permissions: [],
+  $sequence: 0,
   barcode: '1234567890128',
   sku_code: 'SKU-001',
   name: 'Test Product',

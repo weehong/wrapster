@@ -53,8 +53,8 @@ const productFormSchema = z.object({
     .refine(isValidEAN13, 'Invalid EAN-13 check digit'),
   sku_code: z.string().optional(),
   name: z.string().min(1, 'Product name is required'),
-  type: z.enum(['single', 'bundle']).default('single'),
-  price: z.coerce.number().min(0).default(0),
+  type: z.enum(['single', 'bundle']),
+  price: z.number().min(0),
 })
 
 type FormValues = z.infer<typeof productFormSchema>
@@ -259,6 +259,7 @@ export function ProductForm({
                     min="0"
                     placeholder="0.00"
                     disabled={isLoading}
+                    onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
                   />
                 </FormControl>
                 <FormMessage />

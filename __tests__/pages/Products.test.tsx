@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -16,6 +16,7 @@ const mockProducts: Product[] = [
     $createdAt: '2024-01-01T00:00:00.000Z',
     $updatedAt: '2024-01-01T00:00:00.000Z',
     $permissions: [],
+    $sequence: 0,
     barcode: '1234567890128',
     sku_code: 'SKU-001',
     name: 'Test Product 1',
@@ -29,6 +30,7 @@ const mockProducts: Product[] = [
     $createdAt: '2024-01-02T00:00:00.000Z',
     $updatedAt: '2024-01-02T00:00:00.000Z',
     $permissions: [],
+    $sequence: 0,
     barcode: '9876543210987',
     sku_code: 'SKU-002',
     name: 'Test Bundle',
@@ -42,6 +44,7 @@ const mockProducts: Product[] = [
     $createdAt: '2024-01-03T00:00:00.000Z',
     $updatedAt: '2024-01-03T00:00:00.000Z',
     $permissions: [],
+    $sequence: 0,
     barcode: '5555555555551',
     sku_code: null,
     name: 'Product Without SKU',
