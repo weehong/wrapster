@@ -609,9 +609,9 @@ export default function Packaging() {
       )}
 
       {/* Excel-like Table */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border">
-        <Table className="table-fixed">
-          <TableHeader className="bg-muted/50">
+      <div className="min-h-0 flex-1 overflow-auto rounded-md border">
+        <Table className="min-w-[700px]">
+          <TableHeader className="bg-muted/50 sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
@@ -627,11 +627,7 @@ export default function Packaging() {
               </TableRow>
             ))}
           </TableHeader>
-        </Table>
-
-        <div className="flex-1 overflow-auto">
-          <Table className="table-fixed">
-            <TableBody>
+          <TableBody>
               {/* Input Row - Only shown for today */}
               {isSelectedToday && (
               <TableRow className="bg-primary/5 hover:bg-primary/5">
@@ -807,8 +803,7 @@ export default function Packaging() {
                 </TableRow>
               )}
             </TableBody>
-          </Table>
-        </div>
+        </Table>
       </div>
 
       {/* Delete Confirmation Dialog */}
