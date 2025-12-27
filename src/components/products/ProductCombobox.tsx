@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, ChevronsUpDown } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -32,8 +33,9 @@ export function ProductCombobox({
   onSelect,
   disabledProductIds = [],
   disabled = false,
-  placeholder = 'Select a product',
+  placeholder,
 }: ProductComboboxProps) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [selectedProductData, setSelectedProductData] = useState<Product | null>(null)
@@ -107,7 +109,7 @@ export function ProductCombobox({
               </span>
             </span>
           ) : (
-            <span className="text-muted-foreground">{placeholder}</span>
+            <span className="text-muted-foreground">{placeholder || t('productForm.selectProduct')}</span>
           )}
           <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
         </Button>
@@ -115,15 +117,15 @@ export function ProductCombobox({
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="Search by barcode or name..."
+            placeholder={t('productForm.searchProducts')}
             value={searchQuery}
             onValueChange={setSearchQuery}
           />
           <CommandList>
             {isLoading ? (
-              <div className="py-6 text-center text-sm">Loading products...</div>
+              <div className="py-6 text-center text-sm">{t('common.loading')}</div>
             ) : filteredProducts.length === 0 ? (
-              <CommandEmpty>No products found.</CommandEmpty>
+              <CommandEmpty>{t('products.noProducts')}</CommandEmpty>
             ) : (
               <CommandGroup>
                 {filteredProducts.map((product) => {

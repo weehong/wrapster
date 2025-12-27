@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Suspense } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 
+import '@/lib/i18n'
+
 import AuthGuard from '@/components/AuthGuard'
 import { Toaster } from '@/components/ui/sonner'
 import { SuspenseSpinner } from '@/components/ui/spinner'

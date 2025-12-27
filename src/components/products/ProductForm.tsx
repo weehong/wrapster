@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 
@@ -55,6 +56,7 @@ export function ProductForm({
   onCancel,
   isLoading = false,
 }: ProductFormProps) {
+  const { t } = useTranslation()
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const lastKeyTime = useRef<number>(0)
   const barcodeBuffer = useRef<string>('')
@@ -140,7 +142,7 @@ export function ProductForm({
   const handleSubmit = async (data: FormValues) => {
     // Validate bundle has at least one item
     if (data.type === 'bundle' && bundleItems.length === 0) {
-      setBundleError('Bundle must have at least one product')
+      setBundleError(t('productForm.bundleRequired'))
       return
     }
 
@@ -164,12 +166,12 @@ export function ProductForm({
                   <Barcode value={field.value} format="CODE128" height={60} />
                 </div>
               )}
-              <FormLabel>Product Code *</FormLabel>
+              <FormLabel>{t('productForm.productCode')} *</FormLabel>
               <FormControl>
                 <Input
                   {...field}
                   ref={barcodeInputRef}
-                  placeholder="Scan or enter product code"
+                  placeholder={t('productForm.productCodePlaceholder')}
                   disabled={isLoading || !!product}
                   autoComplete="off"
                 />
@@ -184,11 +186,11 @@ export function ProductForm({
           name="sku_code"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>SKU Code</FormLabel>
+              <FormLabel>{t('productForm.skuCode')}</FormLabel>
               <FormControl>
                 <Input
                   {...field}
-                  placeholder="Enter SKU code (optional)"
+                  placeholder={t('productForm.skuCodePlaceholder')}
                   disabled={isLoading}
                 />
               </FormControl>
@@ -202,11 +204,11 @@ export function ProductForm({
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Product Name *</FormLabel>
+              <FormLabel>{t('productForm.productName')} *</FormLabel>
               <FormControl>
                 <Input
                   {...field}
-                  placeholder="Enter product name"
+                  placeholder={t('productForm.productNamePlaceholder')}
                   disabled={isLoading}
                 />
               </FormControl>
@@ -221,7 +223,7 @@ export function ProductForm({
             name="type"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Type</FormLabel>
+                <FormLabel>{t('products.type')}</FormLabel>
                 <Select
                   onValueChange={field.onChange}
                   defaultValue={field.value}
@@ -229,12 +231,12 @@ export function ProductForm({
                 >
                   <FormControl>
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select product type" />
+                      <SelectValue placeholder={t('productForm.selectType')} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="single">Single Item</SelectItem>
-                    <SelectItem value="bundle">Bundle</SelectItem>
+                    <SelectItem value="single">{t('products.single')}</SelectItem>
+                    <SelectItem value="bundle">{t('products.bundle')}</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -247,7 +249,7 @@ export function ProductForm({
             name="price"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Price</FormLabel>
+                <FormLabel>{t('products.price')}</FormLabel>
                 <FormControl>
                   <Input
                     {...field}
@@ -285,10 +287,10 @@ export function ProductForm({
             onClick={onCancel}
             disabled={isLoading}
           >
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Saving...' : product ? 'Update' : 'Create'}
+            {isLoading ? t('productForm.saving') : product ? t('productForm.update') : t('productForm.create')}
           </Button>
         </div>
       </form>

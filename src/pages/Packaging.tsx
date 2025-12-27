@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Info, Loader2, Plus, Trash2, X } from 'lucide-react'
 import {
@@ -88,6 +89,8 @@ interface LocalPackagingItem {
 }
 
 export default function Packaging() {
+  const { t } = useTranslation()
+
   // Date navigation state
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const isSelectedToday = isToday(formatDateToString(selectedDate))
@@ -236,7 +239,7 @@ export default function Packaging() {
     const waybillToSubmit = (scannedBarcode ?? waybillInput).trim()
 
     if (!waybillToSubmit) {
-      toast.error('Please enter a waybill number')
+      toast.error(t('packaging.enterWaybillError'))
       return
     }
 
@@ -276,12 +279,12 @@ export default function Packaging() {
     const barcodeToSubmit = (scannedBarcode ?? productInput).trim()
 
     if (!barcodeToSubmit) {
-      toast.error('Please scan a product barcode')
+      toast.error(t('packaging.scanProductError'))
       return
     }
 
     if (!currentWaybill) {
-      toast.error('No active waybill')
+      toast.error(t('packaging.noActiveWaybill'))
       return
     }
 
@@ -376,7 +379,7 @@ export default function Packaging() {
   // Handle completing current waybill - save to database
   const handleCompleteWaybill = useCallback(async () => {
     if (!currentWaybill || currentItems.length === 0) {
-      toast.error('Please scan at least one product')
+      toast.error(t('packaging.scanAtLeastOne'))
       return
     }
 
@@ -422,10 +425,10 @@ export default function Packaging() {
       setProductInput('')
       waybillInputRef.current?.focus()
 
-      toast.success('Packaging record saved')
+      toast.success(t('packaging.recordSaved'))
     } catch (err) {
       console.error('Error saving packaging record:', err)
-      setError('Failed to save packaging record')
+      setError(t('packaging.saveError'))
     } finally {
       setIsSubmitting(false)
     }
@@ -587,7 +590,7 @@ export default function Packaging() {
       },
       {
         accessorKey: 'waybill_number',
-        header: 'Waybill',
+        header: t('packaging.waybill'),
         cell: ({ row }) => (
           <div className="font-mono font-semibold">
             {row.original.waybill_number}
@@ -597,7 +600,7 @@ export default function Packaging() {
       },
       {
         id: 'products',
-        header: 'Product Barcode',
+        header: t('packaging.productBarcode'),
         cell: ({ row }) => (
           <div className="flex flex-col gap-1">
             {row.original.items.map((item, itemIndex) => (
@@ -625,14 +628,14 @@ export default function Packaging() {
               </div>
             ))}
             {row.original.items.length === 0 && (
-              <span className="text-muted-foreground text-sm">No items</span>
+              <span className="text-muted-foreground text-sm">{t('packaging.noItems')}</span>
             )}
           </div>
         ),
       },
       {
         id: 'itemCount',
-        header: () => <div className="text-center">Items</div>,
+        header: () => <div className="text-center">{t('common.items')}</div>,
         cell: ({ row }) => (
           <div className="text-center font-semibold">
             {row.original.items.length}
@@ -642,7 +645,7 @@ export default function Packaging() {
       },
       {
         id: 'time',
-        header: 'Time',
+        header: t('common.time'),
         cell: ({ row }) => (
           <div className="text-muted-foreground">
             {formatTime(row.original.$createdAt)}
@@ -652,7 +655,7 @@ export default function Packaging() {
       },
       {
         id: 'actions',
-        header: () => <div className="text-center">Actions</div>,
+        header: () => <div className="text-center">{t('common.actions')}</div>,
         cell: ({ row }) => (
           <div className="text-center">
             {isSelectedToday ? (
@@ -683,31 +686,35 @@ export default function Packaging() {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
-      <div className="flex shrink-0 items-start justify-between">
+      <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Packaging</h1>
+          <h1 className="text-2xl font-bold">{t('packaging.title')}</h1>
           <p className="text-muted-foreground mt-1">
-            Scan waybills and product barcodes for packaging records
+            {t('packaging.subtitle')}
           </p>
         </div>
-        <DatePicker
-          date={selectedDate}
-          onDateChange={(date) => date && setSelectedDate(date)}
-          disabled={isSubmitting}
-        />
+        <div className="flex gap-2 self-end sm:self-auto">
+          <DatePicker
+            date={selectedDate}
+            onDateChange={(date) => date && setSelectedDate(date)}
+            disabled={isSubmitting}
+          />
+        </div>
       </div>
 
-      {error && (
-        <div className="bg-destructive/10 text-destructive shrink-0 rounded-md p-3 text-sm">
-          {error}
-          <button
-            className="ml-2 underline"
-            onClick={() => setError(null)}
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
+      {
+        error && (
+          <div className="bg-destructive/10 text-destructive shrink-0 rounded-md p-3 text-sm">
+            {error}
+            <button
+              className="ml-2 underline"
+              onClick={() => setError(null)}
+            >
+              {t('common.dismiss')}
+            </button>
+          </div>
+        )
+      }
 
       {/* Excel-like Table */}
       <div className="min-h-0 flex-1 overflow-auto rounded-md border">
@@ -729,8 +736,8 @@ export default function Packaging() {
             ))}
           </TableHeader>
           <TableBody>
-              {/* Input Row - Only shown for today */}
-              {isSelectedToday && (
+            {/* Input Row - Only shown for today */}
+            {isSelectedToday && (
               <TableRow className="bg-primary/5 hover:bg-primary/5">
                 <TableCell className="text-muted-foreground text-center align-top pt-3" style={{ width: 64 }}>
                   <Plus className="mx-auto size-4" />
@@ -741,7 +748,7 @@ export default function Packaging() {
                     value={currentWaybill ?? waybillInput}
                     onChange={(e) => setWaybillInput(e.target.value)}
                     onKeyDown={handleWaybillKeyDown}
-                    placeholder="Scan waybill"
+                    placeholder={t('packaging.scanWaybill')}
                     disabled={isSubmitting || !!currentWaybill}
                     autoComplete="off"
                     className="h-8 font-mono"
@@ -768,7 +775,7 @@ export default function Packaging() {
                                   setProductPopoverOpen(true)
                                 }
                               }}
-                              placeholder={currentWaybill ? "Scan or search product" : "Enter waybill first"}
+                              placeholder={currentWaybill ? t('packaging.scanProduct') : t('packaging.enterWaybillFirst')}
                               disabled={isSubmitting || !currentWaybill}
                               autoComplete="off"
                               className="h-8 font-mono w-full"
@@ -825,14 +832,14 @@ export default function Packaging() {
                             disabled={isSubmitting}
                             className="h-8 whitespace-nowrap"
                           >
-                            Complete
+                            {t('common.complete')}
                           </Button>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Info className="text-muted-foreground size-4 cursor-help" />
                             </TooltipTrigger>
                             <TooltipContent side="top">
-                              Press Enter to submit the record
+                              {t('packaging.pressEnterToSubmit')}
                             </TooltipContent>
                           </Tooltip>
                         </div>
@@ -870,7 +877,7 @@ export default function Packaging() {
                             {/* Bundle components */}
                             {item.isBundle && item.bundleComponents && item.bundleComponents.length > 0 && (
                               <div className="mt-2 pt-2 border-t border-dashed">
-                                <div className="text-xs font-medium text-muted-foreground mb-1">Contains:</div>
+                                <div className="text-xs font-medium text-muted-foreground mb-1">{t('packaging.contains')}</div>
                                 <div className="flex flex-col gap-1">
                                   {item.bundleComponents.map((comp, compIndex) => (
                                     <div key={compIndex} className="text-xs text-muted-foreground flex items-center gap-1">
@@ -894,52 +901,54 @@ export default function Packaging() {
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground align-top pt-3" style={{ width: 96 }}>
-                  {currentWaybill && <span className="text-xs italic">Draft</span>}
+                  {currentWaybill && <span className="text-xs italic">{t('common.draft')}</span>}
                 </TableCell>
                 <TableCell className="text-center align-top pt-3" style={{ width: 80 }}>
                   {isSubmitting && <Loader2 className="mx-auto size-4 animate-spin" />}
                 </TableCell>
               </TableRow>
-              )}
+            )}
 
-              {/* Loading State */}
-              {isLoading && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
-                    <Loader2 className="mx-auto size-6 animate-spin" />
+            {/* Loading State */}
+            {isLoading && (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8">
+                  <Loader2 className="mx-auto size-6 animate-spin" />
+                </TableCell>
+              </TableRow>
+            )}
+
+            {/* Records for Selected Date - Using React Table */}
+            {!isLoading && table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell
+                    key={cell.id}
+                    className="align-top"
+                    style={{ width: cell.column.getSize() !== 150 ? cell.column.getSize() : undefined }}
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
-                </TableRow>
-              )}
+                ))}
+              </TableRow>
+            ))}
 
-              {/* Records for Selected Date - Using React Table */}
-              {!isLoading && table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className="align-top"
-                      style={{ width: cell.column.getSize() !== 150 ? cell.column.getSize() : undefined }}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-
-              {/* Empty State */}
-              {!isLoading && todayRecords.length === 0 && !currentWaybill && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
-                    <p className="text-muted-foreground">
-                      No packaging records for {isSelectedToday ? 'today' : format(selectedDate, 'MMMM d, yyyy')}
-                    </p>
-                    {isSelectedToday && (
-                      <p className="text-muted-foreground text-sm">Scan a waybill to create one</p>
-                    )}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
+            {/* Empty State */}
+            {!isLoading && todayRecords.length === 0 && !currentWaybill && (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8">
+                  <p className="text-muted-foreground">
+                    {isSelectedToday
+                      ? t('packaging.noRecordsToday')
+                      : t('packaging.noRecordsDate', { date: format(selectedDate, 'MMMM d, yyyy') })}
+                  </p>
+                  {isSelectedToday && (
+                    <p className="text-muted-foreground text-sm">{t('packaging.scanToCreate')}</p>
+                  )}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
         </Table>
       </div>
 
@@ -950,21 +959,22 @@ export default function Packaging() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Packaging Record</AlertDialogTitle>
+            <AlertDialogTitle>{t('packaging.deleteRecordTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete waybill &quot;{deleteRecord?.waybill_number}&quot;?
-              This will also delete all {deleteRecord?.items.length || 0} scanned items.
-              This action cannot be undone.
+              {t('packaging.deleteRecordMessage', {
+                waybill: deleteRecord?.waybill_number,
+                count: deleteRecord?.items.length || 0
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isSubmitting}>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteRecord}
               disabled={isSubmitting}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
-              {isSubmitting ? 'Deleting...' : 'Delete'}
+              {isSubmitting ? t('products.deleting') : t('common.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -982,10 +992,9 @@ export default function Packaging() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Product Not Found</AlertDialogTitle>
+            <AlertDialogTitle>{t('packaging.productNotFoundTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              The product with barcode &quot;{productNotFoundBarcode}&quot; does not exist in the database.
-              Please scan a valid product barcode.
+              {t('packaging.productNotFoundMessage', { barcode: productNotFoundBarcode })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -995,7 +1004,7 @@ export default function Packaging() {
                 productInputRef.current?.focus()
               }}
             >
-              OK
+              {t('common.ok')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1013,10 +1022,9 @@ export default function Packaging() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Waybill Already Exists</AlertDialogTitle>
+            <AlertDialogTitle>{t('packaging.waybillExistsTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              The waybill &quot;{waybillExistsNumber}&quot; already exists for today.
-              Please enter a different waybill number.
+              {t('packaging.waybillExistsMessage', { waybill: waybillExistsNumber })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1026,11 +1034,11 @@ export default function Packaging() {
                 waybillInputRef.current?.focus()
               }}
             >
-              OK
+              {t('common.ok')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </div >
   )
 }
