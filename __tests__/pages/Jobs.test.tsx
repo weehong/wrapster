@@ -127,11 +127,11 @@ const createWrapper = () => {
 describe('Jobs Page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(jobService.listByUser as Mock).mockResolvedValue({
-      documents: mockJobs,
-      total: 2,
-    })
-    ;(jobService.getActiveJobs as Mock).mockResolvedValue([])
+      ; (jobService.listByUser as Mock).mockResolvedValue({
+        documents: mockJobs,
+        total: 2,
+      })
+      ; (jobService.getActiveJobs as Mock).mockResolvedValue([])
   })
 
   describe('page layout', () => {
@@ -156,7 +156,7 @@ describe('Jobs Page', () => {
     })
 
     it('should show no jobs message when empty', async () => {
-      ;(jobService.listByUser as Mock).mockResolvedValue({
+      ; (jobService.listByUser as Mock).mockResolvedValue({
         documents: [],
         total: 0,
       })
@@ -188,8 +188,8 @@ describe('Jobs Page', () => {
 
   describe('loading state', () => {
     it('should show loading indicator', async () => {
-      ;(jobService.listByUser as Mock).mockImplementation(
-        () => new Promise(() => {}) // Never resolves
+      ; (jobService.listByUser as Mock).mockImplementation(
+        () => new Promise(() => { }) // Never resolves
       )
 
       render(<JobsPage />, { wrapper: createWrapper() })
@@ -212,10 +212,10 @@ describe('Jobs Page edge cases', () => {
       error: 'File format not supported',
     }
 
-    ;(jobService.listByUser as Mock).mockResolvedValue({
-      documents: [failedJob],
-      total: 1,
-    })
+      ; (jobService.listByUser as Mock).mockResolvedValue({
+        documents: [failedJob],
+        total: 1,
+      })
 
     render(<JobsPage />, { wrapper: createWrapper() })
 
@@ -232,10 +232,10 @@ describe('Jobs Page edge cases', () => {
       action: 'export-reporting-excel',
     }
 
-    ;(jobService.listByUser as Mock).mockResolvedValue({
-      documents: [reportJob],
-      total: 1,
-    })
+      ; (jobService.listByUser as Mock).mockResolvedValue({
+        documents: [reportJob],
+        total: 1,
+      })
 
     render(<JobsPage />, { wrapper: createWrapper() })
 
@@ -252,10 +252,10 @@ describe('Jobs Page edge cases', () => {
       status: ['pending', 'processing', 'completed', 'failed'][i % 4],
     })) as ParsedJob[]
 
-    ;(jobService.listByUser as Mock).mockResolvedValue({
-      documents: manyJobs,
-      total: 20,
-    })
+      ; (jobService.listByUser as Mock).mockResolvedValue({
+        documents: manyJobs,
+        total: 20,
+      })
 
     render(<JobsPage />, { wrapper: createWrapper() })
 
@@ -265,7 +265,7 @@ describe('Jobs Page edge cases', () => {
   })
 
   it('should handle network error', async () => {
-    ;(jobService.listByUser as Mock).mockRejectedValue(new Error('Network error'))
+    ; (jobService.listByUser as Mock).mockRejectedValue(new Error('Network error'))
 
     render(<JobsPage />, { wrapper: createWrapper() })
 

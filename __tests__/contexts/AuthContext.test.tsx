@@ -146,7 +146,7 @@ describe('AuthContext', () => {
       (authService.getCurrentUser as Mock)
         .mockResolvedValueOnce(null) // Initial load
         .mockResolvedValueOnce(mockUser) // After login
-      ;(authService.login as Mock).mockResolvedValue({ $id: 'session-123' })
+        ; (authService.login as Mock).mockResolvedValue({ $id: 'session-123' })
 
       const user = userEvent.setup()
 
@@ -173,7 +173,7 @@ describe('AuthContext', () => {
 
     it('should throw error on login failure', async () => {
       (authService.getCurrentUser as Mock).mockResolvedValue(null)
-      ;(authService.login as Mock).mockRejectedValue(new Error('Invalid credentials'))
+        ; (authService.login as Mock).mockRejectedValue(new Error('Invalid credentials'))
 
       const user = userEvent.setup()
       const onError = vi.fn()
@@ -204,7 +204,7 @@ describe('AuthContext', () => {
       (authService.getCurrentUser as Mock)
         .mockResolvedValueOnce(null) // Initial load
         .mockResolvedValueOnce({ ...mockUser, email: 'new@example.com' }) // After registration
-      ;(authService.createAccount as Mock).mockResolvedValue({ $id: 'new-user' })
+        ; (authService.createAccount as Mock).mockResolvedValue({ $id: 'new-user' })
 
       const user = userEvent.setup()
 
@@ -237,7 +237,7 @@ describe('AuthContext', () => {
   describe('logout', () => {
     it('should logout user and clear state', async () => {
       (authService.getCurrentUser as Mock).mockResolvedValue(mockUser)
-      ;(authService.logout as Mock).mockResolvedValue({})
+        ; (authService.logout as Mock).mockResolvedValue({})
 
       const user = userEvent.setup()
 
@@ -266,7 +266,7 @@ describe('AuthContext', () => {
   describe('useAuth hook', () => {
     it('should throw error when used outside AuthProvider', () => {
       // Suppress console.error for this test
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { })
 
       expect(() => {
         render(<TestConsumer />)
@@ -284,8 +284,8 @@ describe('AuthContext edge cases', () => {
 
   it('should handle concurrent auth operations', async () => {
     (authService.getCurrentUser as Mock).mockResolvedValue(null)
-    ;(authService.login as Mock).mockResolvedValue({ $id: 'session' })
-    ;(authService.logout as Mock).mockResolvedValue({})
+      ; (authService.login as Mock).mockResolvedValue({ $id: 'session' })
+      ; (authService.logout as Mock).mockResolvedValue({})
 
     const user = userEvent.setup()
 
@@ -367,7 +367,7 @@ describe('AuthContext edge cases', () => {
     (authService.getCurrentUser as Mock)
       .mockResolvedValueOnce(null) // Initial check
       .mockResolvedValueOnce(mockUser) // After login
-    ;(authService.login as Mock).mockResolvedValue({ $id: 'session' })
+      ; (authService.login as Mock).mockResolvedValue({ $id: 'session' })
 
     const user = userEvent.setup()
 

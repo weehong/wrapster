@@ -7,7 +7,7 @@ import { EmailRecipientInput } from '@/components/EmailRecipientInput'
 describe('EmailRecipientInput', () => {
   describe('rendering', () => {
     it('should render with default placeholder', () => {
-      render(<EmailRecipientInput recipients={[]} onChange={() => {}} />)
+      render(<EmailRecipientInput recipients={[]} onChange={() => { }} />)
 
       expect(
         screen.getByPlaceholderText('Enter email and press Enter')
@@ -18,7 +18,7 @@ describe('EmailRecipientInput', () => {
       render(
         <EmailRecipientInput
           recipients={[]}
-          onChange={() => {}}
+          onChange={() => { }}
           placeholder="Add recipient email"
         />
       )
@@ -30,7 +30,7 @@ describe('EmailRecipientInput', () => {
       render(
         <EmailRecipientInput
           recipients={['user1@example.com', 'user2@example.com']}
-          onChange={() => {}}
+          onChange={() => { }}
         />
       )
 
@@ -42,7 +42,7 @@ describe('EmailRecipientInput', () => {
       render(
         <EmailRecipientInput
           recipients={['user@example.com']}
-          onChange={() => {}}
+          onChange={() => { }}
           placeholder="Enter email"
         />
       )
@@ -56,7 +56,7 @@ describe('EmailRecipientInput', () => {
       const { container } = render(
         <EmailRecipientInput
           recipients={[]}
-          onChange={() => {}}
+          onChange={() => { }}
           className="custom-class"
         />
       )
@@ -298,7 +298,7 @@ describe('EmailRecipientInput', () => {
   describe('disabled state', () => {
     it('should disable input when disabled prop is true', () => {
       render(
-        <EmailRecipientInput recipients={[]} onChange={() => {}} disabled />
+        <EmailRecipientInput recipients={[]} onChange={() => { }} disabled />
       )
 
       expect(screen.getByRole('textbox')).toBeDisabled()
@@ -308,7 +308,7 @@ describe('EmailRecipientInput', () => {
       render(
         <EmailRecipientInput
           recipients={['user@example.com']}
-          onChange={() => {}}
+          onChange={() => { }}
           disabled
         />
       )
@@ -318,7 +318,7 @@ describe('EmailRecipientInput', () => {
 
     it('should apply disabled styling to container', () => {
       const { container } = render(
-        <EmailRecipientInput recipients={[]} onChange={() => {}} disabled />
+        <EmailRecipientInput recipients={[]} onChange={() => { }} disabled />
       )
 
       expect(container.querySelector('.opacity-50')).toBeInTheDocument()
@@ -330,7 +330,7 @@ describe('EmailRecipientInput', () => {
       const user = userEvent.setup()
 
       const { container } = render(
-        <EmailRecipientInput recipients={[]} onChange={() => {}} />
+        <EmailRecipientInput recipients={[]} onChange={() => { }} />
       )
 
       const wrapper = container.querySelector('.cursor-text')
@@ -351,7 +351,7 @@ describe('EmailRecipientInput edge cases', () => {
     )
 
     render(
-      <EmailRecipientInput recipients={manyRecipients} onChange={() => {}} />
+      <EmailRecipientInput recipients={manyRecipients} onChange={() => { }} />
     )
 
     expect(screen.getByText('user0@example.com')).toBeInTheDocument()
@@ -362,7 +362,7 @@ describe('EmailRecipientInput edge cases', () => {
     const longEmail = 'a'.repeat(50) + '@' + 'b'.repeat(50) + '.com'
 
     render(
-      <EmailRecipientInput recipients={[longEmail]} onChange={() => {}} />
+      <EmailRecipientInput recipients={[longEmail]} onChange={() => { }} />
     )
 
     expect(screen.getByText(longEmail)).toBeInTheDocument()
@@ -387,7 +387,7 @@ describe('EmailRecipientInput edge cases', () => {
 
     render(
       <form onSubmit={onSubmit}>
-        <EmailRecipientInput recipients={[]} onChange={() => {}} />
+        <EmailRecipientInput recipients={[]} onChange={() => { }} />
       </form>
     )
 
@@ -440,7 +440,7 @@ describe('EmailRecipientInput edge cases', () => {
     const user = userEvent.setup()
 
     const { container } = render(
-      <EmailRecipientInput recipients={[]} onChange={() => {}} />
+      <EmailRecipientInput recipients={[]} onChange={() => { }} />
     )
 
     const input = screen.getByRole('textbox')
