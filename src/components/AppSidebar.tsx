@@ -1,4 +1,4 @@
-import { BarChart3, Box, LayoutDashboard, ListTodo, Loader2, LogOut, Package, PackageOpen, Tags } from 'lucide-react'
+import { BarChart3, LayoutDashboard, ListTodo, Loader2, LogOut, Package, PackageOpen, Tags } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router-dom'
 
@@ -54,7 +54,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-2">
-          <Box className="size-5 shrink-0" />
+          <img src="/logo.png" alt="Wrapster" className="size-6 shrink-0" />
           <span className="text-lg font-semibold group-data-[collapsible=icon]:hidden">
             Wrapster
           </span>

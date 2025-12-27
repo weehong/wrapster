@@ -91,8 +91,11 @@ export default function Login() {
       <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold">{t('login.title')}</CardTitle>
-            <CardDescription>
+            <div className="flex justify-center mb-4">
+              <img src="/logo.png" alt="Wrapster" className="size-16" />
+            </div>
+            <CardTitle className="text-2xl font-bold text-center">{t('login.title')}</CardTitle>
+            <CardDescription className="text-center">
               {t('login.subtitle')}
             </CardDescription>
           </CardHeader>
