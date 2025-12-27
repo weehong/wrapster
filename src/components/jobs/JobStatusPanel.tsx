@@ -99,7 +99,7 @@ export function JobStatusPanel({ jobs, isLoading }: JobStatusPanelProps) {
                   <span className="text-xs text-muted-foreground">
                     {job.action === 'import-excel'
                       ? t('jobs.import')
-                      : job.action.includes('reporting')
+                      : job.action?.includes('reporting')
                         ? t('jobs.reportExport')
                         : t('jobs.export')}
                   </span>
@@ -122,6 +122,7 @@ export function JobStatusPanel({ jobs, isLoading }: JobStatusPanelProps) {
               </div>
             </div>
             {job.status === 'completed' &&
+              job.action &&
               (job.action === 'export-excel' || job.action.includes('reporting')) &&
               job.result_file_id && (
                 <Button

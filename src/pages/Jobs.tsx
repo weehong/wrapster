@@ -8,6 +8,7 @@ import {
   FileSpreadsheet,
   FileUp,
   Loader2,
+  Mail,
   XCircle,
 } from 'lucide-react'
 
@@ -62,7 +63,22 @@ export default function Jobs() {
     }
   }
 
-  const getActionIcon = (action: string) => {
+  const getActionIconBgColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'bg-green-100 text-green-600'
+      case 'failed':
+        return 'bg-red-100 text-red-600'
+      case 'processing':
+        return 'bg-blue-100 text-blue-600'
+      case 'pending':
+      default:
+        return 'bg-muted text-muted-foreground'
+    }
+  }
+
+  const getActionIcon = (action: string | null) => {
+    if (!action) return null
     if (action === 'import-excel') {
       return <FileUp className="size-5" />
     }
@@ -72,10 +88,14 @@ export default function Jobs() {
     if (action.includes('reporting')) {
       return <FileSpreadsheet className="size-5" />
     }
+    if (action === 'send-report-email') {
+      return <Mail className="size-5" />
+    }
     return null
   }
 
-  const getActionLabel = (action: string) => {
+  const getActionLabel = (action: string | null) => {
+    if (!action) return t('common.unknown')
     if (action === 'import-excel') {
       return t('jobs.import')
     }
@@ -85,11 +105,14 @@ export default function Jobs() {
     if (action.includes('reporting')) {
       return t('jobs.reportExport')
     }
+    if (action === 'send-report-email') {
+      return t('jobs.sendEmail')
+    }
     return action
   }
 
   const handleDownload = async (job: ParsedJob) => {
-    if (job.result_file_id) {
+    if (job.result_file_id && job.action) {
       const date = new Date(job.created_at).toISOString().split('T')[0]
       const isPdf = job.action === 'export-reporting-pdf'
       const isReport = job.action.includes('reporting')
@@ -178,7 +201,7 @@ export default function Jobs() {
                   className="flex items-center justify-between gap-4 rounded-lg border p-4"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <div className={`flex size-10 items-center justify-center rounded-full ${getActionIconBgColor(job.status)}`}>
                       {getActionIcon(job.action)}
                     </div>
                     <div>
@@ -211,6 +234,7 @@ export default function Jobs() {
                     </div>
                   </div>
                   {job.status === 'completed' &&
+                    job.action &&
                     (job.action === 'export-excel' || job.action.includes('reporting')) &&
                     job.result_file_id && (
                       <Button

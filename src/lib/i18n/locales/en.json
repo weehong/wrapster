@@ -144,10 +144,18 @@
     "totalQty": "Total Qty",
     "details": "Details",
     "downloadableReports": "Downloadable Reports",
-    "downloadableReportsDescription": "Click the icons to download reports",
+    "downloadableReportsDescription": "Click the icons to download or email reports",
     "noReportsAvailable": "No reports available yet",
     "downloadExcel": "Download Excel",
-    "downloadPdf": "Download PDF"
+    "downloadPdf": "Download PDF",
+    "sendEmail": "Send via Email",
+    "sendTo": "Send to",
+    "emailPlaceholder": "Enter email and press Enter",
+    "send": "Send",
+    "sending": "Sending...",
+    "emailQueued": "Email queued for delivery",
+    "emailError": "Failed to send email",
+    "addRecipientsError": "Please add at least one recipient"
   },
   "login": {
     "title": "Login",
@@ -188,6 +196,7 @@
     "import": "Import",
     "export": "Export",
     "reportExport": "Report Export",
+    "sendEmail": "Send Email",
     "importQueued": "Import job queued. You'll be notified when it's complete.",
     "exportQueued": "Export job queued. You'll be notified when it's ready.",
     "reportExportQueued": "Report export queued. You'll be notified when it's ready.",

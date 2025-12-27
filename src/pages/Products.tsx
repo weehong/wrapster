@@ -96,7 +96,7 @@ export default function Products() {
   )
 
   // Filter to only product exports (not reports)
-  const productExports = completedExports.filter(j => !j.action.includes('reporting'))
+  const productExports = completedExports.filter(j => j.action && !j.action.includes('reporting'))
 
   // Check if import/export jobs are running
   const hasRunningImportJob = activeJobs.some(

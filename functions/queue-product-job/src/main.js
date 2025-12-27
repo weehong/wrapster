@@ -4,7 +4,7 @@ const COLLECTIONS = {
   IMPORT_JOBS: "import_jobs",
 };
 
-const VALID_ACTIONS = ["import-excel", "export-excel", "export-reporting-excel", "export-reporting-pdf"];
+const VALID_ACTIONS = ["import-excel", "export-excel", "export-reporting-excel", "export-reporting-pdf", "send-report-email"];
 
 module.exports = async (context) => {
   const { req, res, log, error } = context;
@@ -18,7 +18,7 @@ module.exports = async (context) => {
       return res.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const { action, fileId, userId, filters, startDate, endDate, format } = body;
+    const { action, fileId, userId, filters, startDate, endDate, format, recipients, dateRange } = body;
 
     // Validate required fields
     if (!action || !userId) {
@@ -33,8 +33,12 @@ module.exports = async (context) => {
       return res.json({ error: "Missing startDate or endDate for report export" }, 400);
     }
 
+    if (action === "send-report-email" && (!fileId || !recipients || !Array.isArray(recipients) || recipients.length === 0)) {
+      return res.json({ error: "Missing fileId or recipients for send-report-email action" }, 400);
+    }
+
     if (!VALID_ACTIONS.includes(action)) {
-      return res.json({ error: "Invalid action. Must be one of: import-excel, export-excel, export-reporting-excel, export-reporting-pdf" }, 400);
+      return res.json({ error: "Invalid action. Must be one of: import-excel, export-excel, export-reporting-excel, export-reporting-pdf, send-report-email" }, 400);
     }
 
     log(`Processing ${action} job for user ${userId}`);
@@ -61,6 +65,11 @@ module.exports = async (context) => {
     // Add report-specific metadata
     if (action === "export-reporting-excel" || action === "export-reporting-pdf") {
       jobData.filters = JSON.stringify({ startDate, endDate, format: format || "excel" });
+    }
+
+    // Add email-specific metadata
+    if (action === "send-report-email") {
+      jobData.filters = JSON.stringify({ recipients, dateRange, fileId });
     }
 
     // Create job record for tracking
@@ -115,6 +124,18 @@ module.exports = async (context) => {
         log(`Report export payload: ${JSON.stringify(payload)}`);
         await tasks.trigger("report-export", payload);
         log(`Triggered report-export task for job ${job.$id}`);
+      } else if (action === "send-report-email") {
+        // Send report via email
+        const payload = {
+          jobId: job.$id,
+          userId,
+          fileId,
+          recipients,
+          dateRange,
+        };
+        log(`Send report email payload: ${JSON.stringify(payload)}`);
+        await tasks.trigger("send-report-email", payload);
+        log(`Triggered send-report-email task for job ${job.$id}`);
       }
     } catch (triggerError) {
       error(`Failed to trigger task: ${triggerError.message || triggerError}`);

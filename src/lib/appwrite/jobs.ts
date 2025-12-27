@@ -151,6 +151,50 @@ export const jobService = {
   },
 
   /**
+   * Queue a send report email job
+   */
+  async queueSendReportEmail(
+    userId: string,
+    fileId: string,
+    recipients: string[],
+    dateRange: string
+  ): Promise<QueueJobResponse> {
+    const execution = await functions.createExecution(
+      FUNCTION_ID,
+      JSON.stringify({
+        action: 'send-report-email',
+        userId,
+        fileId,
+        recipients,
+        dateRange,
+      }),
+      false, // async
+      '/', // path
+      ExecutionMethod.POST // method
+    )
+
+    // Check if function executed successfully
+    if (execution.status === 'failed') {
+      console.error('Function execution failed:', execution.errors)
+      throw new Error(`Function failed: ${execution.errors || 'Unknown error'}`)
+    }
+
+    // Check for empty response
+    if (!execution.responseBody) {
+      console.error('Function returned empty response:', execution)
+      throw new Error('Function returned empty response. Check function logs in Appwrite Console.')
+    }
+
+    const response = JSON.parse(execution.responseBody) as QueueJobResponse
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to queue send report email job')
+    }
+
+    return response
+  },
+
+  /**
    * Get a job by ID
    */
   async getById(jobId: string): Promise<ParsedJob> {

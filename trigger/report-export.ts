@@ -576,7 +576,7 @@ export const reportExportTask = task({
       }));
 
       const summaryData = [
-        { Metric: "Report Period", Value: `${startDate} to ${endDate}` },
+        { Metric: "Report Period", Value: startDate === endDate ? startDate : `${startDate} to ${endDate}` },
         { Metric: "Total Waybill Records", Value: allRecords.length },
         { Metric: "Total Items Scanned", Value: allItems.length },
         { Metric: "Unique Products", Value: uniqueBarcodes.length },

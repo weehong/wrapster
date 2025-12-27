@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { format, formatDistanceToNow, startOfDay } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Download, FileSpreadsheet, FileText, Loader2 } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, Loader2, Mail, Send, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
@@ -12,8 +12,9 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmailRecipientInput } from '@/components/EmailRecipientInput'
 import { useAuth } from '@/contexts/AuthContext'
-import { useCompletedReportExports, useDownloadExport, useQueueReportExport } from '@/hooks/use-jobs'
+import { useCompletedReportExports, useDownloadExport, useQueueReportExport, useQueueSendReportEmail } from '@/hooks/use-jobs'
 import { cn } from '@/lib/utils'
 import type { ParsedJob } from '@/types/job'
 
@@ -87,11 +88,16 @@ export default function Reports() {
   const [endDate, setEndDate] = useState<Date | undefined>(undefined)
   const [isExporting, setIsExporting] = useState(false)
 
+  // Email state
+  const [emailingGroupKey, setEmailingGroupKey] = useState<string | null>(null)
+  const [emailRecipients, setEmailRecipients] = useState<string[]>([])
+
   const today = startOfDay(new Date())
 
   // Async job hooks
   const queueReportExport = useQueueReportExport()
   const downloadExport = useDownloadExport()
+  const queueSendReportEmail = useQueueSendReportEmail()
   const { data: completedReports = [] } = useCompletedReportExports(
     user?.$id || '',
     !!user
@@ -164,6 +170,40 @@ export default function Reports() {
       fileId: job.result_file_id,
       fileName,
     })
+  }
+
+  const handleEmailClick = (groupKey: string) => {
+    if (emailingGroupKey === groupKey) {
+      // Close if already open
+      setEmailingGroupKey(null)
+      setEmailRecipients([])
+    } else {
+      setEmailingGroupKey(groupKey)
+      setEmailRecipients([])
+    }
+  }
+
+  const handleSendEmail = async (fileId: string, dateRange: string) => {
+    if (!user || emailRecipients.length === 0) {
+      toast.error(t('reports.addRecipientsError'))
+      return
+    }
+
+    try {
+      await queueSendReportEmail.mutateAsync({
+        userId: user.$id,
+        fileId,
+        recipients: emailRecipients,
+        dateRange,
+      })
+
+      toast.success(t('reports.emailQueued'))
+      setEmailingGroupKey(null)
+      setEmailRecipients([])
+    } catch (err) {
+      console.error('Error sending email:', err)
+      toast.error(t('reports.emailError'))
+    }
   }
 
   const canExport = startDate && endDate && startDate <= endDate
@@ -283,43 +323,108 @@ export default function Reports() {
               </p>
             ) : (
               <div className="space-y-3">
-                {sortedGroups.map((group) => (
-                  <div
-                    key={`${group.dateRange}_${group.createdAt}`}
-                    className="flex items-center justify-between gap-4 rounded-lg border p-3"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{group.dateRange}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(group.createdAt), 'MMM d, yyyy HH:mm')} • {formatDistanceToNow(new Date(group.createdAt), { addSuffix: true })}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {group.excel && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDownload(group.excel!)}
-                          disabled={downloadExport.isPending}
-                          title={t('reports.downloadExcel')}
-                        >
-                          <FileSpreadsheet className="size-5 text-green-600" />
-                        </Button>
+                {sortedGroups.map((group) => {
+                  const groupKey = `${group.dateRange}_${group.createdAt}`
+                  const isEmailingThisGroup = emailingGroupKey === groupKey
+                  // Prefer PDF for email, fallback to Excel
+                  const emailFileId = group.pdf?.result_file_id || group.excel?.result_file_id
+
+                  return (
+                    <div
+                      key={groupKey}
+                      className="rounded-lg border p-3"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{group.dateRange}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(group.createdAt), 'MMM d, yyyy HH:mm')} • {formatDistanceToNow(new Date(group.createdAt), { addSuffix: true })}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {group.excel && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDownload(group.excel!)}
+                              disabled={downloadExport.isPending}
+                              title={t('reports.downloadExcel')}
+                            >
+                              <FileSpreadsheet className="size-5 text-green-600" />
+                            </Button>
+                          )}
+                          {group.pdf && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDownload(group.pdf!)}
+                              disabled={downloadExport.isPending}
+                              title={t('reports.downloadPdf')}
+                            >
+                              <FileText className="size-5 text-red-600" />
+                            </Button>
+                          )}
+                          {emailFileId && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEmailClick(groupKey)}
+                              disabled={queueSendReportEmail.isPending}
+                              title={t('reports.sendEmail')}
+                              className={isEmailingThisGroup ? 'bg-primary/10' : ''}
+                            >
+                              <Mail className="size-5 text-blue-600" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Email Input Section */}
+                      {isEmailingThisGroup && emailFileId && (
+                        <div className="mt-3 pt-3 border-t space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium">{t('reports.sendTo')}</p>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-6"
+                              onClick={() => {
+                                setEmailingGroupKey(null)
+                                setEmailRecipients([])
+                              }}
+                            >
+                              <X className="size-4" />
+                            </Button>
+                          </div>
+                          <EmailRecipientInput
+                            recipients={emailRecipients}
+                            onChange={setEmailRecipients}
+                            placeholder={t('reports.emailPlaceholder')}
+                            disabled={queueSendReportEmail.isPending}
+                          />
+                          <Button
+                            onClick={() => handleSendEmail(emailFileId, group.dateRange)}
+                            disabled={emailRecipients.length === 0 || queueSendReportEmail.isPending}
+                            size="sm"
+                            className="w-full"
+                          >
+                            {queueSendReportEmail.isPending ? (
+                              <>
+                                <Loader2 className="size-4 animate-spin" />
+                                {t('reports.sending')}
+                              </>
+                            ) : (
+                              <>
+                                <Send className="size-4" />
+                                {t('reports.send')} ({emailRecipients.length})
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       )}
-                      {group.pdf && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDownload(group.pdf!)}
-                          disabled={downloadExport.isPending}
-                          title={t('reports.downloadPdf')}
-                        >
-                          <FileText className="size-5 text-red-600" />
-                        </Button>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>

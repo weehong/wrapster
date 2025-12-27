@@ -661,7 +661,7 @@ async function createImportJobsTable() {
           databaseId: config.databaseId,
           tableId: TABLES.IMPORT_JOBS,
           key: 'action',
-          elements: ['import-excel', 'export-excel', 'export-reporting-excel', 'export-reporting-pdf'],
+          elements: ['import-excel', 'export-excel', 'export-reporting-excel', 'export-reporting-pdf', 'send-report-email'],
           required: true,
         }),
     },

@@ -48,7 +48,7 @@ export function JobIndicator() {
   const hasRecentJobs = activeJobs.length > 0
 
   const handleDownload = async (job: ParsedJob) => {
-    if (job.result_file_id) {
+    if (job.result_file_id && job.action) {
       const date = new Date(job.created_at).toISOString().split('T')[0]
       const isPdf = job.action === 'export-reporting-pdf'
       const isReport = job.action.includes('reporting')
@@ -78,7 +78,8 @@ export function JobIndicator() {
     }
   }
 
-  const getActionIcon = (action: string) => {
+  const getActionIcon = (action: string | null) => {
+    if (!action) return null
     if (action === 'import-excel') {
       return <FileUp className="size-4" />
     }
@@ -156,7 +157,7 @@ export function JobIndicator() {
                           <div className="text-xs text-muted-foreground mt-1">
                             {job.action === 'import-excel'
                               ? t('jobs.import')
-                              : job.action.includes('reporting')
+                              : job.action?.includes('reporting')
                                 ? t('jobs.reportExport')
                                 : t('jobs.export')}
                             {' • '}
@@ -173,6 +174,7 @@ export function JobIndicator() {
                             </div>
                           )}
                           {job.status === 'completed' &&
+                            job.action &&
                             (job.action === 'export-excel' || job.action.includes('reporting')) &&
                             job.result_file_id && (
                               <button

@@ -175,6 +175,36 @@ export function useQueueReportExport() {
 }
 
 /**
+ * Hook to queue a send report email job
+ */
+export function useQueueSendReportEmail() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      userId,
+      fileId,
+      recipients,
+      dateRange,
+    }: {
+      userId: string
+      fileId: string
+      recipients: string[]
+      dateRange: string
+    }) => jobService.queueSendReportEmail(userId, fileId, recipients, dateRange),
+    onSuccess: (_data, variables) => {
+      // Invalidate all job-related queries to refresh the UI
+      queryClient.invalidateQueries({
+        queryKey: [JOBS_QUERY_KEY, variables.userId],
+      })
+      queryClient.invalidateQueries({
+        queryKey: [ACTIVE_JOBS_QUERY_KEY, variables.userId],
+      })
+    },
+  })
+}
+
+/**
  * Hook to download export result
  */
 export function useDownloadExport() {

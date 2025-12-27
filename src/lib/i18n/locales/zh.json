@@ -144,10 +144,18 @@
     "totalQty": "总数量",
     "details": "详情",
     "downloadableReports": "可下载报告",
-    "downloadableReportsDescription": "点击图标下载报告",
+    "downloadableReportsDescription": "点击图标下载或发送报告",
     "noReportsAvailable": "暂无可用报告",
     "downloadExcel": "下载Excel",
-    "downloadPdf": "下载PDF"
+    "downloadPdf": "下载PDF",
+    "sendEmail": "发送邮件",
+    "sendTo": "发送至",
+    "emailPlaceholder": "输入邮箱地址并按回车",
+    "send": "发送",
+    "sending": "发送中...",
+    "emailQueued": "邮件已加入发送队列",
+    "emailError": "发送邮件失败",
+    "addRecipientsError": "请添加至少一个收件人"
   },
   "login": {
     "title": "登录",
@@ -188,6 +196,7 @@
     "import": "导入",
     "export": "导出",
     "reportExport": "报告导出",
+    "sendEmail": "发送邮件",
     "importQueued": "导入任务已排队。完成后会通知您。",
     "exportQueued": "导出任务已排队。准备好后会通知您。",
     "reportExportQueued": "报告导出任务已排队。准备好后会通知您。",
