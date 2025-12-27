@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,7 @@ export function BundleItemsField({
   onChange,
   disabled = false,
 }: BundleItemsFieldProps) {
+  const { t } = useTranslation()
   const handleSelect = (index: number, productId: string | undefined) => {
     const newValue = [...value]
 
@@ -39,7 +41,7 @@ export function BundleItemsField({
 
   return (
     <div className="space-y-3">
-      <Label>Bundle Items</Label>
+      <Label>{t('productForm.bundleItems')}</Label>
       <div className="space-y-2">
         {value.map((productId, index) => (
           <div key={index} className="flex items-center gap-2">
@@ -70,7 +72,7 @@ export function BundleItemsField({
               onSelect={(id) => handleSelect(value.length, id)}
               disabledProductIds={value}
               disabled={disabled}
-              placeholder="Add a product to bundle"
+              placeholder={t('productForm.addProductToBundle')}
             />
           </div>
           <div className="size-9 shrink-0" />
@@ -78,7 +80,7 @@ export function BundleItemsField({
       </div>
       {value.length === 0 && (
         <p className="text-muted-foreground text-sm">
-          Select products to include in this bundle.
+          {t('productForm.selectBundleProducts')}
         </p>
       )}
     </div>

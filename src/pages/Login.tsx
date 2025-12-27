@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import {
@@ -29,6 +30,7 @@ import { authService } from '@/lib/appwrite'
 const SESSION_ACTIVE_ERROR = 'Creation of a session is prohibited when a session is active'
 
 export default function Login() {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -89,9 +91,9 @@ export default function Login() {
       <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold">Login</CardTitle>
+            <CardTitle className="text-2xl font-bold">{t('login.title')}</CardTitle>
             <CardDescription>
-              Enter your email and password to access your account
+              {t('login.subtitle')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -102,7 +104,7 @@ export default function Login() {
                 </div>
               )}
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t('login.email')}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -114,7 +116,7 @@ export default function Login() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t('login.password')}</Label>
                 <Input
                   id="password"
                   type="password"
@@ -125,7 +127,7 @@ export default function Login() {
                 />
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Signing in...' : 'Sign in'}
+                {isLoading ? t('login.loggingIn') : t('login.submit')}
               </Button>
             </form>
           </CardContent>
@@ -135,16 +137,15 @@ export default function Login() {
       <AlertDialog open={showSessionDialog} onOpenChange={setShowSessionDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Active Session Detected</AlertDialogTitle>
+            <AlertDialogTitle>{t('login.activeSessionTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              You already have an active session. Would you like to revoke the
-              current session and log in with these credentials?
+              {t('login.activeSessionMessage')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isLoading}>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleRevokeSession} disabled={isLoading}>
-              {isLoading ? 'Revoking...' : 'Revoke & Login'}
+              {isLoading ? t('login.revoking') : t('login.revokeAndLogin')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

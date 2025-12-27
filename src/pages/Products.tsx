@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Download, FileUp, Loader2, Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import {
   type ColumnDef,
@@ -61,6 +62,8 @@ import type { Product, ProductType } from '@/types/product'
 import { toast } from 'sonner'
 
 export default function Products() {
+  const { t } = useTranslation()
+
   // Dialog states
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -153,7 +156,7 @@ export default function Products() {
       // Download the file
       XLSX.writeFile(workbook, filename)
     } catch (err) {
-      setError('Failed to export products')
+      setError(t('products.exportError'))
       console.error('Error exporting products:', err)
     } finally {
       setIsExporting(false)
@@ -214,7 +217,7 @@ export default function Products() {
     XLSX.utils.book_append_sheet(workbook, instructionsSheet, 'Instructions')
 
     XLSX.writeFile(workbook, 'product-import-template.xlsx')
-    toast.success('Template downloaded')
+    toast.success(t('products.templateDownloaded'))
   }
 
   // Import products from Excel
@@ -246,12 +249,12 @@ export default function Products() {
       }>(worksheet)
 
       if (jsonData.length === 0) {
-        toast.error('No data found in the Excel file')
+        toast.error(t('common.noData'))
         return
       }
 
       // Pre-fetch all existing products into a cache to reduce API calls
-      toast.info('Loading existing products...')
+      toast.info(t('products.loadingProducts'))
       const productCache = new Map<string, { $id: string; name: string; sku_code: string | null; price: number; type: string }>()
       const allProducts = await fetchAllProductsForExport()
       for (const product of allProducts) {
@@ -264,7 +267,7 @@ export default function Products() {
         })
       }
 
-      toast.info(`Processing ${jsonData.length} rows...`)
+      toast.info(t('products.processingRows', { count: jsonData.length }))
 
       let imported = 0
       let updated = 0
@@ -428,13 +431,13 @@ export default function Products() {
         }
       }
 
-      toast.success(`Import complete: ${imported} imported, ${updated} updated, ${skipped} skipped, ${failed} failed`)
+      toast.success(t('products.importComplete', { imported, updated, skipped, failed }))
 
       // Refresh the products list
       queryClient.invalidateQueries({ queryKey: ['products'] })
     } catch (err) {
       console.error('Import error:', err)
-      toast.error('Failed to import products')
+      toast.error(t('products.importError'))
     } finally {
       setIsImporting(false)
     }
@@ -545,7 +548,7 @@ export default function Products() {
     () => [
       {
         accessorKey: 'barcode',
-        header: 'Barcode',
+        header: t('products.barcode'),
         cell: ({ row }) => (
           <span className="font-mono">{row.original.barcode}</span>
         ),
@@ -553,7 +556,7 @@ export default function Products() {
       },
       {
         accessorKey: 'sku_code',
-        header: 'SKU',
+        header: t('products.skuCode'),
         cell: ({ row }) => (
           <span className="font-mono">{row.original.sku_code || '-'}</span>
         ),
@@ -561,11 +564,11 @@ export default function Products() {
       },
       {
         accessorKey: 'name',
-        header: 'Name',
+        header: t('products.productName'),
       },
       {
         accessorKey: 'type',
-        header: 'Type',
+        header: t('products.type'),
         cell: ({ row }) => (
           <span
             className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
@@ -574,14 +577,14 @@ export default function Products() {
                 : 'bg-blue-100 text-blue-700'
             }`}
           >
-            {row.original.type === 'bundle' ? 'Bundle' : 'Single'}
+            {row.original.type === 'bundle' ? t('products.bundle') : t('products.single')}
           </span>
         ),
         size: 100,
       },
       {
         accessorKey: 'price',
-        header: () => <div className="text-right">Price</div>,
+        header: () => <div className="text-right">{t('products.price')}</div>,
         cell: ({ row }) => (
           <div className="text-right">{formatPrice(row.original.price)}</div>
         ),
@@ -589,14 +592,14 @@ export default function Products() {
       },
       {
         id: 'actions',
-        header: 'Actions',
+        header: t('common.actions'),
         cell: ({ row }) => (
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => handleEdit(row.original)}
-              title="Edit product"
+              title={t('products.editProduct')}
             >
               <Pencil className="size-4" />
             </Button>
@@ -604,7 +607,7 @@ export default function Products() {
               variant="ghost"
               size="icon"
               onClick={() => handleDeleteClick(row.original)}
-              title="Delete product"
+              title={t('products.deleteProduct')}
               className="text-destructive hover:text-destructive"
             >
               <Trash2 className="size-4" />
@@ -614,7 +617,7 @@ export default function Products() {
         size: 100,
       },
     ],
-    []
+    [t]
   )
 
   const table = useReactTable({
@@ -658,9 +661,9 @@ export default function Products() {
     <div className="flex h-full flex-col gap-4 overflow-hidden">
       <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Products</h1>
+          <h1 className="text-2xl font-bold">{t('products.title')}</h1>
           <p className="text-muted-foreground mt-1">
-            Manage your product catalog
+            {t('products.subtitle')}
           </p>
         </div>
         <div className="flex gap-2 self-end sm:self-auto">
@@ -675,10 +678,10 @@ export default function Products() {
             variant="outline"
             onClick={handleDownloadTemplate}
             disabled={isImporting}
-            title="Download import template"
+            title={t('common.template')}
           >
             <Download className="mr-2 size-4" />
-            Template
+            {t('common.template')}
           </Button>
           <Button
             variant="outline"
@@ -690,7 +693,7 @@ export default function Products() {
             ) : (
               <FileUp className="mr-2 size-4" />
             )}
-            Import
+            {t('common.import')}
           </Button>
           <Button
             variant="outline"
@@ -702,11 +705,11 @@ export default function Products() {
             ) : (
               <Download className="mr-2 size-4" />
             )}
-            Export
+            {t('common.export')}
           </Button>
           <Button onClick={handleCreate}>
             <Plus className="mr-2 size-4" />
-            Add Product
+            {t('products.addProduct')}
           </Button>
         </div>
       </div>
@@ -721,7 +724,7 @@ export default function Products() {
         <div className="relative flex-1">
           <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
           <Input
-            placeholder="Search by barcode, name, or SKU..."
+            placeholder={t('products.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -732,12 +735,12 @@ export default function Products() {
           onValueChange={(value) => setTypeFilter(value as ProductType | 'all')}
         >
           <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by type" />
+            <SelectValue placeholder={t('products.filterByType')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="single">Single Items</SelectItem>
-            <SelectItem value="bundle">Bundles</SelectItem>
+            <SelectItem value="all">{t('products.allTypes')}</SelectItem>
+            <SelectItem value="single">{t('products.singleItems')}</SelectItem>
+            <SelectItem value="bundle">{t('products.bundles')}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -764,7 +767,7 @@ export default function Products() {
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  Loading products...
+                  {t('common.loading')}
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
@@ -772,14 +775,14 @@ export default function Products() {
                 <TableCell colSpan={columns.length} className="h-24 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <Package className="text-muted-foreground size-8" />
-                    <p className="text-muted-foreground">No products found</p>
+                    <p className="text-muted-foreground">{t('products.noProducts')}</p>
                     {searchQuery && (
                       <Button
                         variant="link"
                         onClick={() => setSearchQuery('')}
                         className="h-auto p-0"
                       >
-                        Clear search
+                        {t('products.clearSearch')}
                       </Button>
                     )}
                   </div>
@@ -821,7 +824,7 @@ export default function Products() {
                       <div className="flex items-center justify-center gap-2">
                         <Loader2 className="size-4 animate-spin" />
                         <span className="text-muted-foreground text-sm">
-                          Loading more products...
+                          {t('products.loadingMore')}
                         </span>
                       </div>
                     </TableCell>
@@ -838,13 +841,13 @@ export default function Products() {
         <div className="text-muted-foreground shrink-0 text-center text-sm">
           {debouncedSearch ? (
             <>
-              Found {filteredProducts.length} matching products
-              {hasMore && ` (${products.length} of ${total} loaded)`}
+              {t('products.foundMatching', { count: filteredProducts.length })}
+              {hasMore && ` (${products.length} / ${total})`}
             </>
           ) : (
             <>
-              Showing {products.length} of {total} products
-              {!hasMore && ' (all loaded)'}
+              {t('products.showingProducts', { count: products.length, total })}
+              {!hasMore && ` ${t('products.allLoaded')}`}
             </>
           )}
         </div>
@@ -854,12 +857,12 @@ export default function Products() {
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>
-              {selectedProduct ? 'Edit Product' : 'Add New Product'}
+              {selectedProduct ? t('products.editProduct') : t('products.addProduct')}
             </DialogTitle>
             <DialogDescription>
               {selectedProduct
-                ? 'Update the product details below.'
-                : 'Enter the product details. Use a barcode scanner for quick entry.'}
+                ? t('products.updateProductDetails')
+                : t('products.enterProductDetails')}
             </DialogDescription>
           </DialogHeader>
           <ProductForm
@@ -879,23 +882,21 @@ export default function Products() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Product</AlertDialogTitle>
+            <AlertDialogTitle>{t('products.deleteConfirmTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &quot;
-              {selectedProduct?.name || selectedProduct?.barcode}&quot;? This
-              action cannot be undone.
+              {t('products.deleteConfirmMessage', { name: selectedProduct?.name || selectedProduct?.barcode })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSubmitting}>
-              Cancel
+              {t('common.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={isSubmitting}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
-              {isSubmitting ? 'Deleting...' : 'Delete'}
+              {isSubmitting ? t('products.deleting') : t('common.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

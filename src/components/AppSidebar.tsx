@@ -1,4 +1,5 @@
 import { BarChart3, Box, LayoutDashboard, LogOut, Package, PackageOpen, Tags } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router-dom'
 
 import {
@@ -16,14 +17,15 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 
 const navItems = [
-  { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
-  { title: 'Packaging', url: '/packaging', icon: Package },
-  { title: 'Unpack', url: '/unpack', icon: PackageOpen },
-  { title: 'Products', url: '/products', icon: Tags },
-  { title: 'Reports', url: '/reports', icon: BarChart3 },
+  { titleKey: 'sidebar.dashboard', url: '/dashboard', icon: LayoutDashboard },
+  { titleKey: 'sidebar.packaging', url: '/packaging', icon: Package },
+  { titleKey: 'sidebar.unpack', url: '/unpack', icon: PackageOpen },
+  { titleKey: 'sidebar.products', url: '/products', icon: Tags },
+  { titleKey: 'sidebar.reports', url: '/reports', icon: BarChart3 },
 ]
 
 export function AppSidebar() {
+  const { t } = useTranslation()
   const location = useLocation()
   const { logout } = useAuth()
   const { setOpenMobile, isMobile } = useSidebar()
@@ -56,15 +58,15 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.titleKey}>
                   <SidebarMenuButton
                     asChild
                     isActive={location.pathname === item.url}
-                    tooltip={item.title}
+                    tooltip={t(item.titleKey)}
                   >
                     <Link to={item.url} onClick={handleNavClick}>
                       <item.icon />
-                      <span>{item.title}</span>
+                      <span>{t(item.titleKey)}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -76,9 +78,9 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={handleLogout} tooltip="Logout" className="cursor-pointer">
+            <SidebarMenuButton onClick={handleLogout} tooltip={t('sidebar.logout')} className="cursor-pointer">
               <LogOut />
-              <span>Logout</span>
+              <span>{t('sidebar.logout')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

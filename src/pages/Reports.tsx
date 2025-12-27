@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { format, startOfDay } from 'date-fns'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { FileText, Loader2, Sheet } from 'lucide-react'
 import jsPDF from 'jspdf'
@@ -32,6 +33,7 @@ interface DatePickerFieldProps {
   disabled?: boolean
   maxDate?: Date
   minDate?: Date
+  pickDateText: string
 }
 
 function DatePickerField({
@@ -40,6 +42,7 @@ function DatePickerField({
   onDateChange,
   disabled,
   maxDate,
+  pickDateText,
 }: DatePickerFieldProps) {
   const [open, setOpen] = useState(false)
   const today = startOfDay(new Date())
@@ -65,7 +68,7 @@ function DatePickerField({
               !date && "text-muted-foreground"
             )}
           >
-            {date ? format(date, "PPP") : <span>Pick a date</span>}
+            {date ? format(date, "PPP") : <span>{pickDateText}</span>}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
@@ -102,6 +105,7 @@ interface ReportData {
 }
 
 export default function Reports() {
+  const { t } = useTranslation()
   const [startDate, setStartDate] = useState<Date | undefined>(undefined)
   const [endDate, setEndDate] = useState<Date | undefined>(undefined)
   const [isExporting, setIsExporting] = useState<'excel' | 'pdf' | null>(null)
@@ -111,12 +115,12 @@ export default function Reports() {
   // Fetch report data (shared between Excel and PDF export)
   const fetchReportData = useCallback(async (): Promise<ReportData | null> => {
     if (!startDate || !endDate) {
-      toast.error('Please select both start and end dates')
+      toast.error(t('reports.selectDatesError'))
       return null
     }
 
     if (startDate > endDate) {
-      toast.error('Start date must be before end date')
+      toast.error(t('reports.dateError'))
       return null
     }
 
@@ -145,7 +149,7 @@ export default function Reports() {
     }
 
     if (allRecords.length === 0) {
-      toast.error('No records found for the selected date range')
+      toast.error(t('reports.noRecordsError'))
       return null
     }
 
@@ -301,14 +305,14 @@ export default function Reports() {
       // Download
       XLSX.writeFile(workbook, filename)
 
-      toast.success(`Exported ${allItems.length} items to ${filename}`)
+      toast.success(t('reports.exportSuccess', { count: allItems.length, filename }))
     } catch (err) {
       console.error('Export failed:', err)
-      toast.error('Failed to export report')
+      toast.error(t('reports.exportError'))
     } finally {
       setIsExporting(null)
     }
-  }, [fetchReportData])
+  }, [fetchReportData, t])
 
   // Export to PDF
   const handleExportPDF = useCallback(async () => {
@@ -447,48 +451,50 @@ export default function Reports() {
       // Download
       doc.save(filename)
 
-      toast.success(`Exported ${allItems.length} items to ${filename}`)
+      toast.success(t('reports.exportSuccess', { count: allItems.length, filename }))
     } catch (err) {
       console.error('PDF export failed:', err)
-      toast.error('Failed to export PDF')
+      toast.error(t('reports.exportError'))
     } finally {
       setIsExporting(null)
     }
-  }, [fetchReportData])
+  }, [fetchReportData, t])
 
   const canExport = startDate && endDate && startDate <= endDate
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-auto p-1">
       <div>
-        <h1 className="text-2xl font-bold">Reports</h1>
+        <h1 className="text-2xl font-bold">{t('reports.title')}</h1>
         <p className="text-muted-foreground mt-1">
-          Generate and export packaging reports
+          {t('reports.subtitle')}
         </p>
       </div>
 
       <Card className="w-full max-w-xl">
         <CardHeader>
-          <CardTitle>Packaging Report</CardTitle>
+          <CardTitle>{t('reports.packagingReport')}</CardTitle>
           <CardDescription>
-            Export packaging records for a date range
+            {t('reports.exportDescription')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
             <DatePickerField
-              label="Start Date"
+              label={t('reports.startDate')}
               date={startDate}
               onDateChange={setStartDate}
               disabled={!!isExporting}
               maxDate={endDate || today}
+              pickDateText={t('reports.pickDate')}
             />
             <DatePickerField
-              label="End Date"
+              label={t('reports.endDate')}
               date={endDate}
               onDateChange={setEndDate}
               disabled={!!isExporting}
               maxDate={today}
+              pickDateText={t('reports.pickDate')}
             />
           </div>
 
@@ -502,12 +508,12 @@ export default function Reports() {
               {isExporting === 'excel' ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Exporting...
+                  {t('reports.exporting')}
                 </>
               ) : (
                 <>
                   <Sheet className="size-4" />
-                  Export Excel
+                  {t('reports.exportExcel')}
                 </>
               )}
             </Button>
@@ -520,12 +526,12 @@ export default function Reports() {
               {isExporting === 'pdf' ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Exporting...
+                  {t('reports.exporting')}
                 </>
               ) : (
                 <>
                   <FileText className="size-4" />
-                  Export PDF
+                  {t('reports.exportPdf')}
                 </>
               )}
             </Button>
@@ -533,7 +539,7 @@ export default function Reports() {
 
           {startDate && endDate && startDate > endDate && (
             <p className="text-destructive text-sm">
-              Start date must be before or equal to end date
+              {t('reports.dateError')}
             </p>
           )}
         </CardContent>
