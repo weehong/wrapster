@@ -14,7 +14,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { EmailRecipientInput } from '@/components/EmailRecipientInput'
 import { useAuth } from '@/contexts/AuthContext'
-import { useCompletedReportExports, useDownloadExport, useQueueReportExport, useQueueSendReportEmail } from '@/hooks/use-jobs'
+import { useActiveJobs, useCompletedReportExports, useDownloadExport, useQueueReportExport, useQueueSendReportEmail } from '@/hooks/use-jobs'
 import { cn } from '@/lib/utils'
 import type { ParsedJob } from '@/types/job'
 
@@ -98,9 +98,14 @@ export default function Reports() {
   const queueReportExport = useQueueReportExport()
   const downloadExport = useDownloadExport()
   const queueSendReportEmail = useQueueSendReportEmail()
+  const { data: activeJobs = [] } = useActiveJobs(user?.$id || '', !!user)
+  const hasActiveJobs = activeJobs.some(
+    (job) => job.status === 'pending' || job.status === 'processing'
+  )
   const { data: completedReports = [] } = useCompletedReportExports(
     user?.$id || '',
-    !!user
+    !!user,
+    hasActiveJobs
   )
 
   // Group completed reports by date range (filters field contains startDate and endDate)

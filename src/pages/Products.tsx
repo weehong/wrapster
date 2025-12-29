@@ -90,9 +90,13 @@ export default function Products() {
     user?.$id || '',
     !!user
   )
+  const hasActiveJobs = activeJobs.some(
+    (job) => job.status === 'pending' || job.status === 'processing'
+  )
   const { data: completedExports = [] } = useRecentCompletedExports(
     user?.$id || '',
-    !!user
+    !!user,
+    hasActiveJobs
   )
 
   // Filter to only product exports (not reports)
