@@ -47,31 +47,40 @@ export function useActiveJobs(userId: string, enabled = true) {
     queryKey: [ACTIVE_JOBS_QUERY_KEY, userId],
     queryFn: () => jobService.getActiveJobs(userId),
     enabled: enabled && !!userId,
-    refetchInterval: 3000, // Poll every 3 seconds for active jobs
+    refetchInterval: (query) => {
+      // Only poll if there are actual pending/processing jobs
+      const jobs = query.state.data || []
+      const hasPendingJobs = jobs.some(
+        (job) => job.status === 'pending' || job.status === 'processing'
+      )
+      return hasPendingJobs ? 3000 : false
+    },
   })
 }
 
 /**
  * Hook to fetch recently completed export jobs for a user
  */
-export function useRecentCompletedExports(userId: string, enabled = true) {
+export function useRecentCompletedExports(userId: string, enabled = true, hasActiveJobs = false) {
   return useQuery({
     queryKey: [JOBS_QUERY_KEY, 'recent-exports', userId],
     queryFn: () => jobService.getRecentCompletedExports(userId),
     enabled: enabled && !!userId,
-    refetchInterval: 5000, // Poll every 5 seconds
+    // Only poll when there are active jobs that might complete
+    refetchInterval: hasActiveJobs ? 5000 : false,
   })
 }
 
 /**
  * Hook to fetch completed report exports for a user
  */
-export function useCompletedReportExports(userId: string, enabled = true) {
+export function useCompletedReportExports(userId: string, enabled = true, hasActiveJobs = false) {
   return useQuery({
     queryKey: [JOBS_QUERY_KEY, 'completed-reports', userId],
     queryFn: () => jobService.getCompletedReportExports(userId),
     enabled: enabled && !!userId,
-    refetchInterval: 3000, // Poll every 3 seconds for quick updates
+    // Only poll when there are active jobs that might complete
+    refetchInterval: hasActiveJobs ? 3000 : false,
   })
 }
 
