@@ -252,11 +252,12 @@ export default function Packaging() {
   const scanHandledRef = useRef<boolean>(false)
 
   // Fetch records for selected date with product names and bundle components
+  // Uses cache-aside pattern: today = live DB, historical = cached
   const fetchRecords = useCallback(async () => {
     try {
       setIsLoading(true)
       const dateStr = formatDateToString(selectedDate)
-      const records = await packagingRecordService.listByDate(dateStr)
+      const records = await packagingRecordService.getPackagingByDate(dateStr)
 
       // Fetch product names and bundle components for all items
       const recordsWithProducts = await Promise.all(
@@ -787,11 +788,17 @@ export default function Packaging() {
   }
 
   const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // Global handler takes care of Enter when items exist
-    // This only fires when there are no items yet
     if (e.key === 'Enter' && !scanHandledRef.current) {
       e.preventDefault()
-      handleProductSubmit()
+
+      // If input is empty and there are items, complete the waybill
+      if (productInput.trim() === '' && currentItems.length > 0) {
+        handleCompleteWaybill()
+      } else if (productInput.trim() !== '') {
+        // If input has content (scanner just finished), add the product
+        handleProductSubmit()
+      }
+      // If input is empty and no items, do nothing (user needs to scan something first)
     }
   }
 

@@ -41,6 +41,7 @@ export const TABLES = {
   PRODUCT_COMPONENTS: 'product_components',
   PACKAGING_RECORDS: 'packaging_records',
   PACKAGING_ITEMS: 'packaging_items',
+  PACKAGING_CACHE: 'packaging_cache',
   IMPORT_JOBS: 'import_jobs',
 } as const
 
@@ -614,6 +615,109 @@ async function createPackagingItemsTable() {
 }
 
 /**
+ * Create the Packaging Cache table
+ * Used for caching historical packaging data (cache-aside pattern)
+ */
+async function createPackagingCacheTable() {
+  console.log('\n--- Creating Packaging Cache Table ---')
+
+  // Create table if it doesn't exist
+  if (await tableExists(TABLES.PACKAGING_CACHE)) {
+    console.log('Table "packaging_cache" already exists, skipping creation...')
+  } else {
+    await tablesDB.createTable({
+      databaseId: config.databaseId,
+      tableId: TABLES.PACKAGING_CACHE,
+      name: 'Packaging Cache',
+      permissions: [
+        Permission.read(Role.users()),
+        Permission.create(Role.users()),
+        Permission.update(Role.users()),
+        Permission.delete(Role.users()),
+      ],
+      rowSecurity: false,
+      enabled: true,
+    })
+    console.log('Created table: packaging_cache')
+  }
+
+  await sleep(500)
+
+  // Create columns
+  const columns = [
+    {
+      key: 'cache_date',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.PACKAGING_CACHE,
+          key: 'cache_date',
+          size: 10, // YYYY-MM-DD format
+          required: true,
+        }),
+    },
+    {
+      key: 'data',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.PACKAGING_CACHE,
+          key: 'data',
+          size: 1000000, // 1MB for JSON data
+          required: true,
+        }),
+    },
+    {
+      key: 'cached_at',
+      create: () =>
+        tablesDB.createDatetimeColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.PACKAGING_CACHE,
+          key: 'cached_at',
+          required: true,
+        }),
+    },
+  ]
+
+  for (const col of columns) {
+    if (await columnExists(TABLES.PACKAGING_CACHE, col.key)) {
+      console.log(`Column "${col.key}" already exists, skipping...`)
+    } else {
+      await col.create()
+      console.log(`Created column: ${col.key}`)
+      await sleep(1000)
+    }
+  }
+
+  // Create indexes
+  const indexes = [
+    {
+      key: 'idx_cache_date',
+      create: () =>
+        tablesDB.createIndex({
+          databaseId: config.databaseId,
+          tableId: TABLES.PACKAGING_CACHE,
+          key: 'idx_cache_date',
+          type: IndexType.Unique,
+          columns: ['cache_date'],
+        }),
+    },
+  ]
+
+  for (const idx of indexes) {
+    if (await indexExists(TABLES.PACKAGING_CACHE, idx.key)) {
+      console.log(`Index "${idx.key}" already exists, skipping...`)
+    } else {
+      await idx.create()
+      console.log(`Created index: ${idx.key}`)
+      await sleep(1000)
+    }
+  }
+
+  console.log('Packaging Cache table setup complete!')
+}
+
+/**
  * Create the Import Jobs table
  */
 async function createImportJobsTable() {
@@ -928,6 +1032,7 @@ async function migrate() {
     await createProductComponentsTable()
     await createPackagingRecordsTable()
     await createPackagingItemsTable()
+    await createPackagingCacheTable()
     await createImportJobsTable()
 
     // Create storage bucket
