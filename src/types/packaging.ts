@@ -20,10 +20,35 @@ export interface PackagingItem extends Models.Document {
 }
 
 /**
+ * Bundle component info for display
+ */
+export interface BundleComponentInfo {
+  barcode: string
+  productName: string
+  quantity: number
+}
+
+/**
+ * Packaging item with product details (for display/caching)
+ */
+export interface PackagingItemWithProduct extends PackagingItem {
+  product_name: string
+  is_bundle?: boolean
+  bundle_components?: BundleComponentInfo[]
+}
+
+/**
  * Packaging record with its items expanded
  */
 export interface PackagingRecordWithItems extends PackagingRecord {
   items: PackagingItem[]
+}
+
+/**
+ * Packaging record with items including product details (for display/caching)
+ */
+export interface PackagingRecordWithProducts extends PackagingRecord {
+  items: PackagingItemWithProduct[]
 }
 
 /**
@@ -44,9 +69,20 @@ export type CreatePackagingItemInput = {
 }
 
 /**
+ * Cached packaging data for historical dates
+ * Stored as serialized JSON in Appwrite database
+ */
+export interface PackagingCache extends Models.Document {
+  cache_date: string // YYYY-MM-DD format - the date this cache represents
+  data: string // JSON stringified PackagingRecordWithItems[]
+  cached_at: string // ISO datetime when cache was created
+}
+
+/**
  * Collection IDs for Appwrite
  */
 export const COLLECTIONS = {
   PACKAGING_RECORDS: 'packaging_records',
   PACKAGING_ITEMS: 'packaging_items',
+  PACKAGING_CACHE: 'packaging_cache',
 } as const

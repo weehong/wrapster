@@ -5,6 +5,11 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import type { User } from '@/lib/appwrite'
 
 import { authService } from '@/lib/appwrite'
+import {
+  initAuditSession,
+  setAuditUserContext,
+  clearAuditSession,
+} from '@/lib/appwrite/audit-log'
 
 interface AuthContextType {
   user: User | null
@@ -32,8 +37,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const currentUser = await authService.getCurrentUser()
       setUser(currentUser)
+
+      // Set audit context if user is authenticated
+      if (currentUser) {
+        initAuditSession()
+        setAuditUserContext({
+          user_id: currentUser.$id,
+          user_email: currentUser.email,
+        })
+      }
     } catch {
       setUser(null)
+      clearAuditSession()
+      setAuditUserContext(null)
     } finally {
       setIsLoading(false)
     }

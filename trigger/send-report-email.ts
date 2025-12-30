@@ -1,6 +1,7 @@
 import { task, logger } from "@trigger.dev/sdk/v3";
 import { Client, Databases, Storage } from "node-appwrite";
 import { Resend } from "resend";
+import { createAuditLog } from "./lib/audit-log";
 
 interface SendReportEmailPayload {
   jobId: string;
@@ -145,6 +146,21 @@ export const sendReportEmailTask = task({
         messageId: data?.id,
       });
 
+      // Log email sent
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'report_email_sent',
+        resourceType: 'job',
+        resourceId: jobId,
+        actionDetails: {
+          recipientCount: recipients.length,
+          fileId,
+          dateRange,
+          messageId: data?.id,
+        },
+        status: 'success',
+      });
+
       logger.info("Send report email completed", { jobId, recipients: recipients.length });
 
       return {
@@ -154,6 +170,22 @@ export const sendReportEmailTask = task({
       };
     } catch (error) {
       logger.error("Send report email failed", { error });
+
+      // Log email failure
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'report_email_sent',
+        resourceType: 'job',
+        resourceId: jobId,
+        actionDetails: {
+          recipientCount: recipients.length,
+          fileId,
+          dateRange,
+        },
+        status: 'failure',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      });
+
       await updateJobStatus(
         databases,
         jobId,

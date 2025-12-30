@@ -1,11 +1,11 @@
 {
-  "name": "queue-product-job",
-  "version": "1.0.0",
+  "dependencies": {
+    "@trigger.dev/sdk": "4.3.1",
+    "node-appwrite": "^21.1.0"
+  },
   "description": "Appwrite Function to queue product import/export jobs via Trigger.dev",
   "main": "src/main.js",
+  "name": "queue-product-job",
   "type": "commonjs",
-  "dependencies": {
-    "node-appwrite": "^21.1.0",
-    "@trigger.dev/sdk": "^3.3.0"
-  }
+  "version": "1.0.0"
 }
