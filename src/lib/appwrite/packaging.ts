@@ -193,6 +193,45 @@ export const packagingRecordService = {
   },
 
   /**
+   * Refresh the cache for a specific date
+   * Fetches fresh data from database and updates the cache
+   * Used after modifications to historical records
+   */
+  async refreshCache(date: string): Promise<void> {
+    const today = getTodayDate()
+    // Don't cache today's data
+    if (date === today) {
+      return
+    }
+
+    try {
+      console.log(`[Packaging] Refreshing cache for ${date}`)
+      // Invalidate existing cache
+      await packagingCacheService.invalidate(date)
+
+      // Fetch fresh data from database
+      const records = await this.listByDate(date)
+      const enrichedRecords = await this.enrichWithProducts(records)
+
+      // Set new cache
+      await packagingCacheService.set(date, enrichedRecords)
+      console.log(`[Packaging] Cache refreshed for ${date} with ${enrichedRecords.length} records`)
+
+      auditLogService
+        .log('packaging_cache_refresh', 'packaging_record', {
+          action_details: {
+            date,
+            recordCount: enrichedRecords.length,
+          },
+        })
+        .catch(console.error)
+    } catch (error) {
+      console.error(`[Packaging] Failed to refresh cache for ${date}:`, error)
+      // Don't throw - cache refresh failure shouldn't break the operation
+    }
+  },
+
+  /**
    * Get packaging records by date with cache-aside pattern
    * - For today: Query database directly for real-time data
    * - For past dates: Check cache first, fallback to database and update cache
@@ -270,12 +309,125 @@ export const packagingRecordService = {
   },
 
   /**
+   * Update a packaging record (waybill number)
+   */
+  async update(
+    recordId: string,
+    data: { waybill_number: string }
+  ): Promise<PackagingRecord> {
+    try {
+      // Get original record for audit
+      const original = await databaseService.getDocument<PackagingRecord>(
+        COLLECTIONS.PACKAGING_RECORDS,
+        recordId
+      )
+
+      const record = await databaseService.updateDocument<PackagingRecord>(
+        COLLECTIONS.PACKAGING_RECORDS,
+        recordId,
+        data
+      )
+
+      // Refresh cache for this date (invalidate + re-create with fresh data)
+      await this.refreshCache(record.packaging_date)
+
+      auditLogService
+        .log('packaging_record_update', 'packaging_record', {
+          resource_id: recordId,
+          action_details: {
+            packaging_date: record.packaging_date,
+            old_waybill_number: original.waybill_number,
+            new_waybill_number: data.waybill_number,
+          },
+        })
+        .catch(console.error)
+
+      return record
+    } catch (error) {
+      auditLogService
+        .log('packaging_record_update', 'packaging_record', {
+          resource_id: recordId,
+          action_details: data,
+          status: 'failure',
+          error_message: error instanceof Error ? error.message : 'Unknown error',
+        })
+        .catch(console.error)
+      throw error
+    }
+  },
+
+  /**
+   * Update packaging items for a record (replace all items)
+   * This handles adding/removing items by replacing the entire item list
+   */
+  async updateItems(
+    recordId: string,
+    items: Array<{ product_barcode: string; scanned_at?: string }>
+  ): Promise<PackagingItem[]> {
+    try {
+      // Get the record to find its date
+      const record = await databaseService.getDocument<PackagingRecord>(
+        COLLECTIONS.PACKAGING_RECORDS,
+        recordId
+      )
+
+      // Get existing items for audit
+      const existingItems = await packagingItemService.listByRecordId(recordId)
+
+      // Delete all existing items
+      for (const item of existingItems) {
+        await databaseService.deleteDocument(COLLECTIONS.PACKAGING_ITEMS, item.$id)
+      }
+
+      // Create new items
+      const newItems: PackagingItem[] = []
+      for (const item of items) {
+        const newItem = await databaseService.createDocument<PackagingItem>(
+          COLLECTIONS.PACKAGING_ITEMS,
+          {
+            packaging_record_id: recordId,
+            product_barcode: item.product_barcode,
+            scanned_at: item.scanned_at ?? new Date().toISOString(),
+          }
+        )
+        newItems.push(newItem)
+      }
+
+      // Refresh cache for this date (invalidate + re-create with fresh data)
+      await this.refreshCache(record.packaging_date)
+
+      auditLogService
+        .log('packaging_items_update', 'packaging_item', {
+          resource_id: recordId,
+          action_details: {
+            packaging_date: record.packaging_date,
+            old_items: existingItems.map((i) => i.product_barcode),
+            new_items: items.map((i) => i.product_barcode),
+          },
+        })
+        .catch(console.error)
+
+      return newItems
+    } catch (error) {
+      auditLogService
+        .log('packaging_items_update', 'packaging_item', {
+          resource_id: recordId,
+          status: 'failure',
+          error_message: error instanceof Error ? error.message : 'Unknown error',
+        })
+        .catch(console.error)
+      throw error
+    }
+  },
+
+  /**
    * Delete a packaging record and all its items
    */
   async delete(recordId: string): Promise<void> {
     try {
-      // Get record details before deletion for audit
+      // Get record details before deletion for audit and cache refresh
       let recordDetails: Record<string, unknown> = {}
+      let packagingDate: string | null = null
       try {
         const record = await databaseService.getDocument<PackagingRecord>(
           COLLECTIONS.PACKAGING_RECORDS,
@@ -285,6 +437,7 @@ export const packagingRecordService = {
           packaging_date: record.packaging_date,
           waybill_number: record.waybill_number,
         }
+        packagingDate = record.packaging_date
       } catch {
         // Record may not exist, continue with deletion
       }
@@ -297,6 +450,11 @@ export const packagingRecordService = {
 
       // Delete the record
       await databaseService.deleteDocument(COLLECTIONS.PACKAGING_RECORDS, recordId)
+
+      // Refresh cache for this date (invalidate + re-create with fresh data)
+      if (packagingDate) {
+        await this.refreshCache(packagingDate)
+      }
 
       auditLogService.log('packaging_record_delete', 'packaging_record', {
         resource_id: recordId,
