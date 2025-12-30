@@ -906,7 +906,7 @@ export default function Products() {
             {t('products.subtitle')}
           </p>
         </div>
-        <div className="flex gap-2 self-end sm:self-auto">
+        <div className="flex flex-wrap gap-2 self-end sm:self-auto">
           <input
             ref={fileInputRef}
             type="file"
