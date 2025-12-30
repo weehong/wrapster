@@ -1,4 +1,6 @@
 import { databaseService, Query } from './database'
+import { packagingCacheService } from './packaging-cache'
+import { getTodayDate } from '@/lib/utils'
 
 import type {
   CreatePackagingItemInput,
@@ -52,7 +54,8 @@ export const packagingRecordService = {
   },
 
   /**
-   * List all packaging records for a specific date
+   * List all packaging records for a specific date (direct database query)
+   * Use getPackagingByDate for cache-aside pattern
    */
   async listByDate(date: string): Promise<PackagingRecordWithItems[]> {
     const result = await databaseService.listDocuments<PackagingRecord>(
@@ -72,6 +75,36 @@ export const packagingRecordService = {
     )
 
     return recordsWithItems
+  },
+
+  /**
+   * Get packaging records by date with cache-aside pattern
+   * - For today: Query database directly for real-time data
+   * - For past dates: Check cache first, fallback to database and update cache
+   */
+  async getPackagingByDate(date: string): Promise<PackagingRecordWithItems[]> {
+    const today = getTodayDate()
+
+    // For today's date, always fetch from database for real-time editing
+    if (date === today) {
+      return this.listByDate(date)
+    }
+
+    // For historical dates, try cache first
+    const cachedData = await packagingCacheService.get(date)
+    if (cachedData !== null) {
+      return cachedData
+    }
+
+    // Cache miss: fetch from database
+    const records = await this.listByDate(date)
+
+    // Store in cache for future requests (async, don't wait)
+    packagingCacheService.set(date, records).catch((error) => {
+      console.error('Failed to update packaging cache:', error)
+    })
+
+    return records
   },
 
   /**

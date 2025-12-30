@@ -44,9 +44,20 @@ export type CreatePackagingItemInput = {
 }
 
 /**
+ * Cached packaging data for historical dates
+ * Stored as serialized JSON in Appwrite database
+ */
+export interface PackagingCache extends Models.Document {
+  cache_date: string // YYYY-MM-DD format - the date this cache represents
+  data: string // JSON stringified PackagingRecordWithItems[]
+  cached_at: string // ISO datetime when cache was created
+}
+
+/**
  * Collection IDs for Appwrite
  */
 export const COLLECTIONS = {
   PACKAGING_RECORDS: 'packaging_records',
   PACKAGING_ITEMS: 'packaging_items',
+  PACKAGING_CACHE: 'packaging_cache',
 } as const
