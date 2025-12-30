@@ -1,6 +1,7 @@
 import { task, logger } from "@trigger.dev/sdk/v3";
 import { Client, Databases, Storage, ID, Query } from "node-appwrite";
 import * as XLSX from "xlsx";
+import { createAuditLog } from "./lib/audit-log";
 
 interface ImportPayload {
   jobId: string;
@@ -141,6 +142,16 @@ export const productImportTask = task({
     try {
       // Update job status to processing
       await updateJobStatus(databases, jobId, "processing");
+
+      // Log job start
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'job_import_started',
+        resourceType: 'job',
+        resourceId: jobId,
+        actionDetails: { fileId },
+        status: 'success',
+      });
 
       // Download file from Appwrite Storage
       logger.info("Downloading file from storage");
@@ -368,6 +379,19 @@ export const productImportTask = task({
       // Update job status to completed
       await updateJobStatus(databases, jobId, "completed", stats);
 
+      // Log job completion
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'job_import_completed',
+        resourceType: 'job',
+        resourceId: jobId,
+        actionDetails: {
+          stats,
+          totalRows: jsonData.length,
+        },
+        status: 'success',
+      });
+
       // Clean up uploaded file
       try {
         await storage.deleteFile(bucketId, fileId);
@@ -379,6 +403,17 @@ export const productImportTask = task({
       return { success: true, stats };
     } catch (error) {
       logger.error("Import failed", { error });
+
+      // Log job failure
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'job_import_completed',
+        resourceType: 'job',
+        resourceId: jobId,
+        status: 'failure',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      });
+
       await updateJobStatus(
         databases,
         jobId,

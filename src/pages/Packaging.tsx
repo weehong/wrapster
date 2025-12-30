@@ -55,7 +55,7 @@ import {
 } from '@/lib/appwrite/packaging'
 import { productService } from '@/lib/appwrite/products'
 import { formatTime, getTodayDate, isToday } from '@/lib/utils'
-import type { PackagingItem, PackagingRecord } from '@/types/packaging'
+import type { PackagingItemWithProduct, PackagingRecordWithProducts } from '@/types/packaging'
 import type { Product } from '@/types/product'
 
 // Helper to format Date to YYYY-MM-DD string
@@ -63,23 +63,7 @@ function formatDateToString(date: Date): string {
   return format(date, 'yyyy-MM-dd')
 }
 
-// Bundle component for display only (used in saved records)
-interface BundleComponentDisplay {
-  barcode: string
-  productName: string
-  quantity: number
-}
-
-// Extended type to include product name for display
-interface PackagingItemWithProduct extends PackagingItem {
-  product_name: string
-  is_bundle?: boolean
-  bundle_components?: BundleComponentDisplay[]
-}
-
-interface PackagingRecordWithItemsAndProducts extends PackagingRecord {
-  items: PackagingItemWithProduct[]
-}
+// Use PackagingRecordWithProducts from types (includes product names and bundle info)
 
 // Bundle component for display (includes product for stock validation)
 interface BundleComponentItem {
@@ -120,7 +104,7 @@ export default function Packaging() {
   const [currentItems, setCurrentItems] = useState<LocalPackagingItem[]>([])
 
   // Records for selected date (from database)
-  const [todayRecords, setTodayRecords] = useState<PackagingRecordWithItemsAndProducts[]>([])
+  const [todayRecords, setTodayRecords] = useState<PackagingRecordWithProducts[]>([])
 
   // Input states
   const [waybillInput, setWaybillInput] = useState('')
@@ -132,7 +116,7 @@ export default function Packaging() {
   const [error, setError] = useState<string | null>(null)
 
   // Delete dialog state
-  const [deleteRecord, setDeleteRecord] = useState<PackagingRecordWithItemsAndProducts | null>(null)
+  const [deleteRecord, setDeleteRecord] = useState<PackagingRecordWithProducts | null>(null)
 
   // Product not found dialog state
   const [productNotFoundBarcode, setProductNotFoundBarcode] = useState<string | null>(null)
@@ -253,48 +237,14 @@ export default function Packaging() {
 
   // Fetch records for selected date with product names and bundle components
   // Uses cache-aside pattern: today = live DB, historical = cached
+  // Product info is now included in the response (batch fetched or cached)
   const fetchRecords = useCallback(async () => {
     try {
       setIsLoading(true)
       const dateStr = formatDateToString(selectedDate)
+      // getPackagingByDate now returns records with product info included
       const records = await packagingRecordService.getPackagingByDate(dateStr)
-
-      // Fetch product names and bundle components for all items
-      const recordsWithProducts = await Promise.all(
-        records.map(async (record) => {
-          const itemsWithProducts = await Promise.all(
-            record.items.map(async (item) => {
-              const product = await productService.getByBarcode(item.product_barcode)
-
-              const result: PackagingItemWithProduct = {
-                ...item,
-                product_name: product?.name ?? 'Unknown Product',
-                is_bundle: product?.type === 'bundle',
-              }
-
-              // If it's a bundle, fetch its components
-              if (product && product.type === 'bundle') {
-                const productWithComponents = await productService.getWithComponents(product.$id)
-                if (productWithComponents.components && productWithComponents.components.length > 0) {
-                  result.bundle_components = productWithComponents.components.map((comp) => ({
-                    barcode: comp.product.barcode,
-                    productName: comp.product.name,
-                    quantity: comp.quantity,
-                  }))
-                }
-              }
-
-              return result
-            })
-          )
-          return {
-            ...record,
-            items: itemsWithProducts,
-          }
-        })
-      )
-
-      setTodayRecords(recordsWithProducts)
+      setTodayRecords(records)
     } catch (err) {
       console.error('Error fetching records:', err)
       setError('Failed to load records')
@@ -594,7 +544,7 @@ export default function Packaging() {
       await queryClient.invalidateQueries({ queryKey: ['products'] })
 
       // Add to today's records
-      const completedRecord: PackagingRecordWithItemsAndProducts = {
+      const completedRecord: PackagingRecordWithProducts = {
         ...newRecord,
         items: savedItems,
       }
@@ -803,7 +753,7 @@ export default function Packaging() {
   }
 
   // Define columns for React Table
-  const columns = useMemo<ColumnDef<PackagingRecordWithItemsAndProducts>[]>(
+  const columns = useMemo<ColumnDef<PackagingRecordWithProducts>[]>(
     () => [
       {
         id: 'index',

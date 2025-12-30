@@ -1,8 +1,9 @@
 /**
- * Script to cache all historical packaging data
+ * Script to cache all historical packaging data with product info
  *
  * This script queries the database to find all packaging dates,
- * then caches each date's data (excluding today).
+ * then caches each date's data (excluding today) with product names
+ * and bundle components included for fast retrieval.
  *
  * Usage:
  *   npx tsx scripts/cache-all-packaging.ts
@@ -26,6 +27,8 @@ const COLLECTIONS = {
   PACKAGING_RECORDS: 'packaging_records',
   PACKAGING_ITEMS: 'packaging_items',
   PACKAGING_CACHE: 'packaging_cache',
+  PRODUCTS: 'products',
+  PRODUCT_COMPONENTS: 'product_components',
 } as const
 
 const client = new Client()
@@ -59,8 +62,27 @@ interface PackagingItem {
   scanned_at: string
 }
 
-interface PackagingRecordWithItems extends PackagingRecord {
-  items: PackagingItem[]
+interface Product {
+  $id: string
+  barcode: string
+  name: string
+  type: 'single' | 'bundle'
+}
+
+interface BundleComponentInfo {
+  barcode: string
+  productName: string
+  quantity: number
+}
+
+interface PackagingItemWithProduct extends PackagingItem {
+  product_name: string
+  is_bundle?: boolean
+  bundle_components?: BundleComponentInfo[]
+}
+
+interface PackagingRecordWithProducts extends PackagingRecord {
+  items: PackagingItemWithProduct[]
 }
 
 async function getAllUniqueDates(): Promise<string[]> {
@@ -98,11 +120,12 @@ async function getAllUniqueDates(): Promise<string[]> {
   return historicalDates
 }
 
-async function fetchPackagingRecordsByDate(dateString: string): Promise<PackagingRecordWithItems[]> {
+async function fetchPackagingRecordsByDate(dateString: string): Promise<PackagingRecordWithProducts[]> {
   const allRecords: PackagingRecord[] = []
   let offset = 0
   const limit = 100
 
+  // Fetch all records for the date
   while (true) {
     const result = await databases.listDocuments(
       config.databaseId,
@@ -130,8 +153,8 @@ async function fetchPackagingRecordsByDate(dateString: string): Promise<Packagin
     await delay(API_DELAY)
   }
 
-  const recordsWithItems: PackagingRecordWithItems[] = []
-
+  // Fetch all items for all records
+  const allItems: PackagingItem[] = []
   for (const record of allRecords) {
     const itemsResult = await databases.listDocuments(
       config.databaseId,
@@ -142,27 +165,105 @@ async function fetchPackagingRecordsByDate(dateString: string): Promise<Packagin
       ]
     )
 
-    const items: PackagingItem[] = itemsResult.documents.map((item) => ({
-      $id: item.$id,
-      $createdAt: item.$createdAt,
-      $updatedAt: item.$updatedAt,
-      packaging_record_id: item.packaging_record_id as string,
-      product_barcode: item.product_barcode as string,
-      scanned_at: item.scanned_at as string,
-    }))
-
-    recordsWithItems.push({
-      ...record,
-      items,
-    })
-
+    for (const item of itemsResult.documents) {
+      allItems.push({
+        $id: item.$id,
+        $createdAt: item.$createdAt,
+        $updatedAt: item.$updatedAt,
+        packaging_record_id: item.packaging_record_id as string,
+        product_barcode: item.product_barcode as string,
+        scanned_at: item.scanned_at as string,
+      })
+    }
     await delay(API_DELAY)
   }
 
-  return recordsWithItems
+  // Collect unique barcodes and batch fetch products
+  const uniqueBarcodes = [...new Set(allItems.map(item => item.product_barcode))]
+  const productMap = new Map<string, Product>()
+
+  // Fetch products in batches
+  for (let i = 0; i < uniqueBarcodes.length; i += 50) {
+    const batch = uniqueBarcodes.slice(i, i + 50)
+    const result = await databases.listDocuments(
+      config.databaseId,
+      COLLECTIONS.PRODUCTS,
+      [Query.equal('barcode', batch), Query.limit(50)]
+    )
+    for (const doc of result.documents) {
+      productMap.set(doc.barcode as string, {
+        $id: doc.$id,
+        barcode: doc.barcode as string,
+        name: doc.name as string,
+        type: doc.type as 'single' | 'bundle',
+      })
+    }
+    await delay(API_DELAY)
+  }
+
+  // Fetch bundle components for bundle products
+  const bundleProducts = Array.from(productMap.values()).filter(p => p.type === 'bundle')
+  const bundleComponentsMap = new Map<string, BundleComponentInfo[]>()
+
+  for (const bundle of bundleProducts) {
+    try {
+      const componentsResult = await databases.listDocuments(
+        config.databaseId,
+        COLLECTIONS.PRODUCT_COMPONENTS,
+        [Query.equal('parent_product_id', bundle.$id)]
+      )
+
+      const components: BundleComponentInfo[] = []
+      for (const comp of componentsResult.documents) {
+        const childProductId = comp.child_product_id as string
+        const quantity = comp.quantity as number
+
+        // Fetch child product details
+        const childProduct = await databases.getDocument(
+          config.databaseId,
+          COLLECTIONS.PRODUCTS,
+          childProductId
+        )
+
+        components.push({
+          barcode: childProduct.barcode as string,
+          productName: childProduct.name as string,
+          quantity,
+        })
+        await delay(API_DELAY)
+      }
+
+      if (components.length > 0) {
+        bundleComponentsMap.set(bundle.barcode, components)
+      }
+    } catch {
+      // Skip if components can't be fetched
+    }
+  }
+
+  // Build records with enriched items
+  const recordsWithProducts: PackagingRecordWithProducts[] = allRecords.map(record => {
+    const recordItems = allItems.filter(item => item.packaging_record_id === record.$id)
+    const enrichedItems: PackagingItemWithProduct[] = recordItems.map(item => {
+      const product = productMap.get(item.product_barcode)
+      return {
+        ...item,
+        product_name: product?.name ?? 'Unknown Product',
+        is_bundle: product?.type === 'bundle',
+        bundle_components: bundleComponentsMap.get(item.product_barcode),
+      }
+    })
+
+    return {
+      ...record,
+      items: enrichedItems,
+    }
+  })
+
+  return recordsWithProducts
 }
 
-async function cachePackagingData(dateString: string, data: PackagingRecordWithItems[]): Promise<void> {
+async function cachePackagingData(dateString: string, data: PackagingRecordWithProducts[]): Promise<void> {
   const existing = await databases.listDocuments(
     config.databaseId,
     COLLECTIONS.PACKAGING_CACHE,
@@ -194,7 +295,7 @@ async function cachePackagingData(dateString: string, data: PackagingRecordWithI
 
 async function main() {
   console.log('='.repeat(50))
-  console.log('Cache All Historical Packaging Data')
+  console.log('Cache All Historical Packaging Data (with Products)')
   console.log('='.repeat(50))
 
   if (!config.projectId || !config.apiKey || !config.databaseId) {
@@ -234,7 +335,7 @@ async function main() {
 
         await cachePackagingData(dateString, records)
 
-        console.log(`✓ ${records.length} records, ${itemCount} items`)
+        console.log(`✓ ${records.length} records, ${itemCount} items (with product info)`)
         successCount++
         totalRecords += records.length
         totalItems += itemCount

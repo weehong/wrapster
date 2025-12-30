@@ -7,6 +7,8 @@
  * 3. packaging_records - Waybill tracking with date (unique per date)
  * 4. packaging_items - Individual product scans linked to packaging records
  * 5. import_jobs - Tracking async import/export jobs
+ * 6. packaging_cache - Cache for historical packaging data
+ * 7. audit_logs - Audit trail for user actions and system events
  *
  * Usage:
  *   npx tsx scripts/migrate-database.ts
@@ -43,6 +45,7 @@ export const TABLES = {
   PACKAGING_ITEMS: 'packaging_items',
   PACKAGING_CACHE: 'packaging_cache',
   IMPORT_JOBS: 'import_jobs',
+  AUDIT_LOGS: 'audit_logs',
 } as const
 
 // Initialize Appwrite client
@@ -952,6 +955,252 @@ async function createImportJobsTable() {
 }
 
 /**
+ * Create the Audit Logs table
+ */
+async function createAuditLogsTable() {
+  console.log('\n--- Creating Audit Logs Table ---')
+
+  // Create table if it doesn't exist
+  if (await tableExists(TABLES.AUDIT_LOGS)) {
+    console.log('Table "audit_logs" already exists, skipping creation...')
+  } else {
+    await tablesDB.createTable({
+      databaseId: config.databaseId,
+      tableId: TABLES.AUDIT_LOGS,
+      name: 'Audit Logs',
+      permissions: [
+        Permission.read(Role.users()),
+        Permission.create(Role.users()),
+        Permission.update(Role.users()),
+        Permission.delete(Role.users()),
+      ],
+      rowSecurity: false,
+      enabled: true,
+    })
+    console.log('Created table: audit_logs')
+  }
+
+  await sleep(500)
+
+  // Create columns
+  const columns = [
+    {
+      key: 'user_id',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'user_id',
+          size: 36,
+          required: true,
+        }),
+    },
+    {
+      key: 'user_email',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'user_email',
+          size: 320,
+          required: false,
+        }),
+    },
+    {
+      key: 'action_type',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'action_type',
+          size: 50,
+          required: true,
+        }),
+    },
+    {
+      key: 'resource_type',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'resource_type',
+          size: 30,
+          required: true,
+        }),
+    },
+    {
+      key: 'resource_id',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'resource_id',
+          size: 36,
+          required: false,
+        }),
+    },
+    {
+      key: 'action_details',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'action_details',
+          size: 10000,
+          required: false,
+        }),
+    },
+    {
+      key: 'ip_address',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'ip_address',
+          size: 45,
+          required: false,
+        }),
+    },
+    {
+      key: 'user_agent',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'user_agent',
+          size: 500,
+          required: false,
+        }),
+    },
+    {
+      key: 'status',
+      create: () =>
+        tablesDB.createEnumColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'status',
+          elements: ['success', 'failure'],
+          required: true,
+        }),
+    },
+    {
+      key: 'error_message',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'error_message',
+          size: 1000,
+          required: false,
+        }),
+    },
+    {
+      key: 'timestamp',
+      create: () =>
+        tablesDB.createDatetimeColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'timestamp',
+          required: true,
+        }),
+    },
+    {
+      key: 'session_id',
+      create: () =>
+        tablesDB.createStringColumn({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'session_id',
+          size: 36,
+          required: false,
+        }),
+    },
+  ]
+
+  for (const col of columns) {
+    if (await columnExists(TABLES.AUDIT_LOGS, col.key)) {
+      console.log(`Column "${col.key}" already exists, skipping...`)
+    } else {
+      await col.create()
+      console.log(`Created column: ${col.key}`)
+      await sleep(1000)
+    }
+  }
+
+  // Create indexes
+  const indexes = [
+    {
+      key: 'idx_user_id',
+      create: () =>
+        tablesDB.createIndex({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'idx_user_id',
+          type: IndexType.Key,
+          columns: ['user_id'],
+        }),
+    },
+    {
+      key: 'idx_timestamp',
+      create: () =>
+        tablesDB.createIndex({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'idx_timestamp',
+          type: IndexType.Key,
+          columns: ['timestamp'],
+          orders: ['DESC'],
+        }),
+    },
+    {
+      key: 'idx_action_type',
+      create: () =>
+        tablesDB.createIndex({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'idx_action_type',
+          type: IndexType.Key,
+          columns: ['action_type'],
+        }),
+    },
+    {
+      key: 'idx_resource',
+      create: () =>
+        tablesDB.createIndex({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'idx_resource',
+          type: IndexType.Key,
+          columns: ['resource_type', 'resource_id'],
+        }),
+    },
+    {
+      key: 'idx_status',
+      create: () =>
+        tablesDB.createIndex({
+          databaseId: config.databaseId,
+          tableId: TABLES.AUDIT_LOGS,
+          key: 'idx_status',
+          type: IndexType.Key,
+          columns: ['status'],
+        }),
+    },
+  ]
+
+  for (const idx of indexes) {
+    if (await indexExists(TABLES.AUDIT_LOGS, idx.key)) {
+      console.log(`Index "${idx.key}" already exists, skipping...`)
+    } else {
+      await idx.create()
+      console.log(`Created index: ${idx.key}`)
+      await sleep(1000)
+    }
+  }
+
+  console.log('Audit Logs table setup complete!')
+}
+
+/**
  * Create storage bucket for export files
  */
 async function createExportsBucket() {
@@ -1034,6 +1283,7 @@ async function migrate() {
     await createPackagingItemsTable()
     await createPackagingCacheTable()
     await createImportJobsTable()
+    await createAuditLogsTable()
 
     // Create storage bucket
     await createExportsBucket()

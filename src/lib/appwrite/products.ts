@@ -1,4 +1,5 @@
 import { databaseService, Query } from './database'
+import { auditLogService } from './audit-log'
 
 import type {
   CreateProductComponentInput,
@@ -15,21 +16,53 @@ export const productService = {
    * Create a new product
    */
   async create(data: CreateProductInput): Promise<Product> {
-    return databaseService.createDocument<Product>(COLLECTIONS.PRODUCTS, {
-      sku_code: data.sku_code ?? null,
-      barcode: data.barcode,
-      name: data.name,
-      type: data.type ?? 'single',
-      cost: data.cost ?? 0,
-      stock_quantity: data.stock_quantity ?? 0,
-    })
+    try {
+      const product = await databaseService.createDocument<Product>(COLLECTIONS.PRODUCTS, {
+        sku_code: data.sku_code ?? null,
+        barcode: data.barcode,
+        name: data.name,
+        type: data.type ?? 'single',
+        cost: data.cost ?? 0,
+        stock_quantity: data.stock_quantity ?? 0,
+      })
+
+      auditLogService.log('product_create', 'product', {
+        resource_id: product.$id,
+        action_details: {
+          barcode: data.barcode,
+          name: data.name,
+          type: data.type ?? 'single',
+          sku_code: data.sku_code,
+        },
+      }).catch(console.error)
+
+      return product
+    } catch (error) {
+      auditLogService.log('product_create', 'product', {
+        action_details: {
+          barcode: data.barcode,
+          name: data.name,
+          type: data.type ?? 'single',
+        },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 
   /**
    * Get a product by ID
    */
   async getById(productId: string): Promise<Product> {
-    return databaseService.getDocument<Product>(COLLECTIONS.PRODUCTS, productId)
+    const product = await databaseService.getDocument<Product>(COLLECTIONS.PRODUCTS, productId)
+
+    auditLogService.log('product_view', 'product', {
+      resource_id: productId,
+      action_details: { barcode: product.barcode, name: product.name },
+    }).catch(console.error)
+
+    return product
   },
 
   /**
@@ -40,7 +73,14 @@ export const productService = {
       COLLECTIONS.PRODUCTS,
       [Query.equal('barcode', barcode), Query.limit(1)]
     )
-    return result.documents[0] ?? null
+    const product = result.documents[0] ?? null
+
+    auditLogService.log('product_search_barcode', 'product', {
+      resource_id: product?.$id,
+      action_details: { barcode, found: !!product },
+    }).catch(console.error)
+
+    return product
   },
 
   /**
@@ -51,7 +91,14 @@ export const productService = {
       COLLECTIONS.PRODUCTS,
       [Query.equal('sku_code', skuCode), Query.limit(1)]
     )
-    return result.documents[0] ?? null
+    const product = result.documents[0] ?? null
+
+    auditLogService.log('product_search_sku', 'product', {
+      resource_id: product?.$id,
+      action_details: { skuCode, found: !!product },
+    }).catch(console.error)
+
+    return product
   },
 
   /**
@@ -62,11 +109,16 @@ export const productService = {
     limit?: number
     offset?: number
     search?: string
+    barcodes?: string[] // Batch fetch by barcodes
   }): Promise<{ documents: Product[]; total: number }> {
     const queries: string[] = []
 
     if (options?.type) {
       queries.push(Query.equal('type', options.type))
+    }
+    if (options?.barcodes && options.barcodes.length > 0) {
+      // Batch fetch by barcodes
+      queries.push(Query.equal('barcode', options.barcodes))
     }
     if (options?.search) {
       // Search across barcode, name, and sku_code using OR
@@ -85,47 +137,104 @@ export const productService = {
       queries.push(Query.offset(options.offset))
     }
 
-    return databaseService.listDocuments<Product>(COLLECTIONS.PRODUCTS, queries)
+    const result = await databaseService.listDocuments<Product>(COLLECTIONS.PRODUCTS, queries)
+
+    auditLogService.log('product_list', 'product', {
+      action_details: {
+        filters: options,
+        resultCount: result.documents.length,
+        total: result.total,
+      },
+    }).catch(console.error)
+
+    return result
   },
 
   /**
    * Update a product
    */
   async update(productId: string, data: UpdateProductInput): Promise<Product> {
-    return databaseService.updateDocument<Product>(
-      COLLECTIONS.PRODUCTS,
-      productId,
-      data
-    )
+    try {
+      const product = await databaseService.updateDocument<Product>(
+        COLLECTIONS.PRODUCTS,
+        productId,
+        data
+      )
+
+      auditLogService.log('product_update', 'product', {
+        resource_id: productId,
+        action_details: {
+          updates: data,
+          barcode: product.barcode,
+          name: product.name,
+        },
+      }).catch(console.error)
+
+      return product
+    } catch (error) {
+      auditLogService.log('product_update', 'product', {
+        resource_id: productId,
+        action_details: { updates: data },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 
   /**
    * Delete a product and its components
    */
   async delete(productId: string): Promise<void> {
-    // First, delete any components where this product is a parent or child
-    const parentComponents = await databaseService.listDocuments<ProductComponent>(
-      COLLECTIONS.PRODUCT_COMPONENTS,
-      [Query.equal('parent_product_id', productId)]
-    )
-    const childComponents = await databaseService.listDocuments<ProductComponent>(
-      COLLECTIONS.PRODUCT_COMPONENTS,
-      [Query.equal('child_product_id', productId)]
-    )
+    try {
+      // Get product details before deletion for audit
+      let productDetails: { barcode?: string; name?: string } = {}
+      try {
+        const product = await databaseService.getDocument<Product>(COLLECTIONS.PRODUCTS, productId)
+        productDetails = { barcode: product.barcode, name: product.name }
+      } catch {
+        // Product may not exist, continue with deletion
+      }
 
-    // Delete all related components
-    for (const component of [
-      ...parentComponents.documents,
-      ...childComponents.documents,
-    ]) {
-      await databaseService.deleteDocument(
+      // First, delete any components where this product is a parent or child
+      const parentComponents = await databaseService.listDocuments<ProductComponent>(
         COLLECTIONS.PRODUCT_COMPONENTS,
-        component.$id
+        [Query.equal('parent_product_id', productId)]
       )
-    }
+      const childComponents = await databaseService.listDocuments<ProductComponent>(
+        COLLECTIONS.PRODUCT_COMPONENTS,
+        [Query.equal('child_product_id', productId)]
+      )
 
-    // Delete the product
-    await databaseService.deleteDocument(COLLECTIONS.PRODUCTS, productId)
+      // Delete all related components
+      for (const component of [
+        ...parentComponents.documents,
+        ...childComponents.documents,
+      ]) {
+        await databaseService.deleteDocument(
+          COLLECTIONS.PRODUCT_COMPONENTS,
+          component.$id
+        )
+      }
+
+      // Delete the product
+      await databaseService.deleteDocument(COLLECTIONS.PRODUCTS, productId)
+
+      auditLogService.log('product_delete', 'product', {
+        resource_id: productId,
+        action_details: {
+          ...productDetails,
+          componentsDeleted: parentComponents.documents.length + childComponents.documents.length,
+        },
+      }).catch(console.error)
+    } catch (error) {
+      auditLogService.log('product_delete', 'product', {
+        resource_id: productId,
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 
   /**
@@ -161,11 +270,32 @@ export const productService = {
    * Update stock quantity for a product
    */
   async updateStock(productId: string, newQuantity: number): Promise<Product> {
-    return databaseService.updateDocument<Product>(
-      COLLECTIONS.PRODUCTS,
-      productId,
-      { stock_quantity: Math.max(0, newQuantity) }
-    )
+    try {
+      const product = await databaseService.updateDocument<Product>(
+        COLLECTIONS.PRODUCTS,
+        productId,
+        { stock_quantity: Math.max(0, newQuantity) }
+      )
+
+      auditLogService.log('product_stock_update', 'product', {
+        resource_id: productId,
+        action_details: {
+          newQuantity: Math.max(0, newQuantity),
+          barcode: product.barcode,
+          name: product.name,
+        },
+      }).catch(console.error)
+
+      return product
+    } catch (error) {
+      auditLogService.log('product_stock_update', 'product', {
+        resource_id: productId,
+        action_details: { newQuantity },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 
   /**
@@ -311,7 +441,21 @@ export const productService = {
       }
     }
 
-    return { success: errors.length === 0, errors }
+    const result = { success: errors.length === 0, errors }
+
+    // Log the overall deduction operation
+    auditLogService.log('product_stock_deduct', 'product', {
+      action_details: {
+        itemCount: items.length,
+        productsUpdated: updatedProducts.length,
+        success: result.success,
+        errors: result.errors,
+      },
+      status: result.success ? 'success' : 'failure',
+      error_message: result.errors.length > 0 ? result.errors.join('; ') : undefined,
+    }).catch(console.error)
+
+    return result
   },
 
   /**
@@ -329,18 +473,34 @@ export const productService = {
   ): Promise<{ success: boolean; errors: string[] }> {
     const requirements = await this.calculateStockRequirements(items)
     const errors: string[] = []
+    let restoredCount = 0
 
     for (const [productId, { product, required }] of requirements) {
       try {
         const latestProduct = await this.getById(productId)
         const newStock = latestProduct.stock_quantity + required
         await this.updateStock(productId, newStock)
+        restoredCount++
       } catch (error) {
         errors.push(`Failed to restore stock for ${product.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
     }
 
-    return { success: errors.length === 0, errors }
+    const result = { success: errors.length === 0, errors }
+
+    // Log the overall restoration operation
+    auditLogService.log('product_stock_restore', 'product', {
+      action_details: {
+        itemCount: items.length,
+        productsRestored: restoredCount,
+        success: result.success,
+        errors: result.errors,
+      },
+      status: result.success ? 'success' : 'failure',
+      error_message: result.errors.length > 0 ? result.errors.join('; ') : undefined,
+    }).catch(console.error)
+
+    return result
   },
 }
 
@@ -349,14 +509,34 @@ export const productComponentService = {
    * Add a component to a bundle
    */
   async create(data: CreateProductComponentInput): Promise<ProductComponent> {
-    return databaseService.createDocument<ProductComponent>(
-      COLLECTIONS.PRODUCT_COMPONENTS,
-      {
-        parent_product_id: data.parent_product_id,
-        child_product_id: data.child_product_id,
-        quantity: data.quantity ?? 1,
-      }
-    )
+    try {
+      const component = await databaseService.createDocument<ProductComponent>(
+        COLLECTIONS.PRODUCT_COMPONENTS,
+        {
+          parent_product_id: data.parent_product_id,
+          child_product_id: data.child_product_id,
+          quantity: data.quantity ?? 1,
+        }
+      )
+
+      auditLogService.log('product_component_add', 'product_component', {
+        resource_id: component.$id,
+        action_details: {
+          parent_product_id: data.parent_product_id,
+          child_product_id: data.child_product_id,
+          quantity: data.quantity ?? 1,
+        },
+      }).catch(console.error)
+
+      return component
+    } catch (error) {
+      auditLogService.log('product_component_add', 'product_component', {
+        action_details: data,
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 
   /**
@@ -388,21 +568,72 @@ export const productComponentService = {
     componentId: string,
     quantity: number
   ): Promise<ProductComponent> {
-    return databaseService.updateDocument<ProductComponent>(
-      COLLECTIONS.PRODUCT_COMPONENTS,
-      componentId,
-      { quantity }
-    )
+    try {
+      const component = await databaseService.updateDocument<ProductComponent>(
+        COLLECTIONS.PRODUCT_COMPONENTS,
+        componentId,
+        { quantity }
+      )
+
+      auditLogService.log('product_component_update', 'product_component', {
+        resource_id: componentId,
+        action_details: {
+          quantity,
+          parent_product_id: component.parent_product_id,
+          child_product_id: component.child_product_id,
+        },
+      }).catch(console.error)
+
+      return component
+    } catch (error) {
+      auditLogService.log('product_component_update', 'product_component', {
+        resource_id: componentId,
+        action_details: { quantity },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 
   /**
    * Remove a component from a bundle
    */
   async delete(componentId: string): Promise<void> {
-    await databaseService.deleteDocument(
-      COLLECTIONS.PRODUCT_COMPONENTS,
-      componentId
-    )
+    try {
+      // Get component details before deletion
+      let componentDetails: Record<string, unknown> = {}
+      try {
+        const component = await databaseService.getDocument<ProductComponent>(
+          COLLECTIONS.PRODUCT_COMPONENTS,
+          componentId
+        )
+        componentDetails = {
+          parent_product_id: component.parent_product_id,
+          child_product_id: component.child_product_id,
+          quantity: component.quantity,
+        }
+      } catch {
+        // Component may not exist, continue with deletion
+      }
+
+      await databaseService.deleteDocument(
+        COLLECTIONS.PRODUCT_COMPONENTS,
+        componentId
+      )
+
+      auditLogService.log('product_component_remove', 'product_component', {
+        resource_id: componentId,
+        action_details: componentDetails,
+      }).catch(console.error)
+    } catch (error) {
+      auditLogService.log('product_component_remove', 'product_component', {
+        resource_id: componentId,
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 
   /**
