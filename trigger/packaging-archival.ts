@@ -18,8 +18,27 @@ interface PackagingItem {
   scanned_at: string;
 }
 
-interface PackagingRecordWithItems extends PackagingRecord {
-  items: PackagingItem[];
+interface Product {
+  $id: string;
+  barcode: string;
+  name: string;
+  type: "single" | "bundle";
+}
+
+interface BundleComponentInfo {
+  barcode: string;
+  productName: string;
+  quantity: number;
+}
+
+interface PackagingItemWithProduct extends PackagingItem {
+  product_name: string;
+  is_bundle?: boolean;
+  bundle_components?: BundleComponentInfo[];
+}
+
+interface PackagingRecordWithProducts extends PackagingRecord {
+  items: PackagingItemWithProduct[];
 }
 
 interface PackagingCache {
@@ -32,6 +51,8 @@ const COLLECTIONS = {
   PACKAGING_RECORDS: "packaging_records",
   PACKAGING_ITEMS: "packaging_items",
   PACKAGING_CACHE: "packaging_cache",
+  PRODUCTS: "products",
+  PRODUCT_COMPONENTS: "product_components",
 } as const;
 
 const API_DELAY = 50;
@@ -58,13 +79,13 @@ function getYesterdayDate(): string {
 }
 
 /**
- * Fetch all packaging records for a specific date
+ * Fetch all packaging records for a specific date with product info
  */
 async function fetchPackagingRecordsByDate(
   databases: Databases,
   databaseId: string,
   dateString: string
-): Promise<PackagingRecordWithItems[]> {
+): Promise<PackagingRecordWithProducts[]> {
   const allRecords: PackagingRecord[] = [];
   let offset = 0;
   const limit = 100;
@@ -99,9 +120,8 @@ async function fetchPackagingRecordsByDate(
 
   logger.info(`Fetched ${allRecords.length} packaging records for ${dateString}`);
 
-  // Fetch items for each record
-  const recordsWithItems: PackagingRecordWithItems[] = [];
-
+  // Fetch all items for all records
+  const allItems: PackagingItem[] = [];
   for (const record of allRecords) {
     const itemsResult = await databases.listDocuments(
       databaseId,
@@ -112,24 +132,101 @@ async function fetchPackagingRecordsByDate(
       ]
     );
 
-    const items: PackagingItem[] = itemsResult.documents.map((item) => ({
-      $id: item.$id,
-      $createdAt: item.$createdAt,
-      $updatedAt: item.$updatedAt,
-      packaging_record_id: item.packaging_record_id as string,
-      product_barcode: item.product_barcode as string,
-      scanned_at: item.scanned_at as string,
-    }));
-
-    recordsWithItems.push({
-      ...record,
-      items,
-    });
-
+    for (const item of itemsResult.documents) {
+      allItems.push({
+        $id: item.$id,
+        $createdAt: item.$createdAt,
+        $updatedAt: item.$updatedAt,
+        packaging_record_id: item.packaging_record_id as string,
+        product_barcode: item.product_barcode as string,
+        scanned_at: item.scanned_at as string,
+      });
+    }
     await delay(API_DELAY);
   }
 
-  return recordsWithItems;
+  // Collect unique barcodes and batch fetch products
+  const uniqueBarcodes = [...new Set(allItems.map((item) => item.product_barcode))];
+  const productMap = new Map<string, Product>();
+
+  // Fetch products in batches
+  for (let i = 0; i < uniqueBarcodes.length; i += 50) {
+    const batch = uniqueBarcodes.slice(i, i + 50);
+    const result = await databases.listDocuments(
+      databaseId,
+      COLLECTIONS.PRODUCTS,
+      [Query.equal("barcode", batch), Query.limit(50)]
+    );
+    for (const doc of result.documents) {
+      productMap.set(doc.barcode as string, {
+        $id: doc.$id,
+        barcode: doc.barcode as string,
+        name: doc.name as string,
+        type: doc.type as "single" | "bundle",
+      });
+    }
+    await delay(API_DELAY);
+  }
+
+  // Fetch bundle components for bundle products
+  const bundleProducts = Array.from(productMap.values()).filter((p) => p.type === "bundle");
+  const bundleComponentsMap = new Map<string, BundleComponentInfo[]>();
+
+  for (const bundle of bundleProducts) {
+    try {
+      const componentsResult = await databases.listDocuments(
+        databaseId,
+        COLLECTIONS.PRODUCT_COMPONENTS,
+        [Query.equal("parent_product_id", bundle.$id)]
+      );
+
+      const components: BundleComponentInfo[] = [];
+      for (const comp of componentsResult.documents) {
+        const childProductId = comp.child_product_id as string;
+        const quantity = comp.quantity as number;
+
+        const childProduct = await databases.getDocument(
+          databaseId,
+          COLLECTIONS.PRODUCTS,
+          childProductId
+        );
+
+        components.push({
+          barcode: childProduct.barcode as string,
+          productName: childProduct.name as string,
+          quantity,
+        });
+        await delay(API_DELAY);
+      }
+
+      if (components.length > 0) {
+        bundleComponentsMap.set(bundle.barcode, components);
+      }
+    } catch {
+      // Skip if components can't be fetched
+    }
+  }
+
+  // Build records with enriched items
+  const recordsWithProducts: PackagingRecordWithProducts[] = allRecords.map((record) => {
+    const recordItems = allItems.filter((item) => item.packaging_record_id === record.$id);
+    const enrichedItems: PackagingItemWithProduct[] = recordItems.map((item) => {
+      const product = productMap.get(item.product_barcode);
+      return {
+        ...item,
+        product_name: product?.name ?? "Unknown Product",
+        is_bundle: product?.type === "bundle",
+        bundle_components: bundleComponentsMap.get(item.product_barcode),
+      };
+    });
+
+    return {
+      ...record,
+      items: enrichedItems,
+    };
+  });
+
+  return recordsWithProducts;
 }
 
 /**
@@ -139,9 +236,8 @@ async function cachePackagingData(
   databases: Databases,
   databaseId: string,
   dateString: string,
-  data: PackagingRecordWithItems[]
+  data: PackagingRecordWithProducts[]
 ): Promise<void> {
-  // Check if cache already exists for this date
   const existing = await databases.listDocuments(
     databaseId,
     COLLECTIONS.PACKAGING_CACHE,
@@ -155,7 +251,6 @@ async function cachePackagingData(
   };
 
   if (existing.documents.length > 0) {
-    // Update existing cache
     await databases.updateDocument(
       databaseId,
       COLLECTIONS.PACKAGING_CACHE,
@@ -164,7 +259,6 @@ async function cachePackagingData(
     );
     logger.info(`Updated existing cache for ${dateString}`);
   } else {
-    // Create new cache entry
     await databases.createDocument(
       databaseId,
       COLLECTIONS.PACKAGING_CACHE,
@@ -178,6 +272,7 @@ async function cachePackagingData(
 /**
  * Scheduled task to archive yesterday's packaging data to cache
  * Runs daily at midnight (00:00 UTC)
+ * Includes product names and bundle components for fast retrieval
  */
 export const packagingArchivalTask = schedules.task({
   id: "packaging-archival",
@@ -190,14 +285,13 @@ export const packagingArchivalTask = schedules.task({
     logger.info(`Starting packaging archival for ${yesterdayDate}`);
 
     try {
-      // Fetch all packaging records for yesterday
-      const recordsWithItems = await fetchPackagingRecordsByDate(
+      const recordsWithProducts = await fetchPackagingRecordsByDate(
         databases,
         databaseId,
         yesterdayDate
       );
 
-      if (recordsWithItems.length === 0) {
+      if (recordsWithProducts.length === 0) {
         logger.info(`No packaging records found for ${yesterdayDate}, skipping cache`);
         return {
           success: true,
@@ -208,23 +302,21 @@ export const packagingArchivalTask = schedules.task({
         };
       }
 
-      // Calculate total items
-      const totalItems = recordsWithItems.reduce(
+      const totalItems = recordsWithProducts.reduce(
         (sum, record) => sum + record.items.length,
         0
       );
 
-      // Store in cache
-      await cachePackagingData(databases, databaseId, yesterdayDate, recordsWithItems);
+      await cachePackagingData(databases, databaseId, yesterdayDate, recordsWithProducts);
 
       logger.info(
-        `Archived ${recordsWithItems.length} records with ${totalItems} items for ${yesterdayDate}`
+        `Archived ${recordsWithProducts.length} records with ${totalItems} items for ${yesterdayDate}`
       );
 
       return {
         success: true,
         date: yesterdayDate,
-        records: recordsWithItems.length,
+        records: recordsWithProducts.length,
         items: totalItems,
         cached: true,
       };
@@ -236,14 +328,11 @@ export const packagingArchivalTask = schedules.task({
 });
 
 interface ManualArchivalPayload {
-  date?: string; // Single date in YYYY-MM-DD format
-  startDate?: string; // Start date for range (YYYY-MM-DD)
-  endDate?: string; // End date for range (YYYY-MM-DD)
+  date?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
-/**
- * Get all dates between start and end (inclusive)
- */
 function getDateRange(startDate: string, endDate: string): string[] {
   const dates: string[] = [];
   const current = new Date(startDate);
@@ -258,13 +347,7 @@ function getDateRange(startDate: string, endDate: string): string[] {
 }
 
 /**
- * Manual trigger task for cache warming
- * Use this to populate cache for historical dates on-demand
- *
- * Usage examples:
- *   - Single date: { date: "2024-12-25" }
- *   - Date range: { startDate: "2024-12-01", endDate: "2024-12-31" }
- *   - Yesterday (default): {}
+ * Manual trigger task for cache warming with product info
  */
 export const packagingCacheWarmup = task({
   id: "packaging-cache-warmup",
@@ -273,17 +356,13 @@ export const packagingCacheWarmup = task({
     const { databases } = createAppwriteClient();
     const databaseId = process.env.APPWRITE_DATABASE_ID!;
 
-    // Determine which dates to process
     let datesToProcess: string[];
 
     if (payload.date) {
-      // Single date specified
       datesToProcess = [payload.date];
     } else if (payload.startDate && payload.endDate) {
-      // Date range specified
       datesToProcess = getDateRange(payload.startDate, payload.endDate);
     } else {
-      // Default to yesterday
       datesToProcess = [getYesterdayDate()];
     }
 
@@ -304,13 +383,13 @@ export const packagingCacheWarmup = task({
       try {
         logger.info(`Processing date: ${dateString}`);
 
-        const recordsWithItems = await fetchPackagingRecordsByDate(
+        const recordsWithProducts = await fetchPackagingRecordsByDate(
           databases,
           databaseId,
           dateString
         );
 
-        if (recordsWithItems.length === 0) {
+        if (recordsWithProducts.length === 0) {
           logger.info(`No records found for ${dateString}, skipping`);
           results.push({
             date: dateString,
@@ -322,18 +401,18 @@ export const packagingCacheWarmup = task({
           continue;
         }
 
-        const totalItems = recordsWithItems.reduce(
+        const totalItems = recordsWithProducts.reduce(
           (sum, record) => sum + record.items.length,
           0
         );
 
-        await cachePackagingData(databases, databaseId, dateString, recordsWithItems);
+        await cachePackagingData(databases, databaseId, dateString, recordsWithProducts);
 
-        logger.info(`Cached ${recordsWithItems.length} records for ${dateString}`);
+        logger.info(`Cached ${recordsWithProducts.length} records for ${dateString}`);
         results.push({
           date: dateString,
           success: true,
-          records: recordsWithItems.length,
+          records: recordsWithProducts.length,
           items: totalItems,
           cached: true,
         });

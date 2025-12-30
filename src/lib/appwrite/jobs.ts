@@ -2,6 +2,7 @@ import { ExecutionMethod, Functions } from 'appwrite'
 
 import client, { storage } from './config'
 import { databaseService, Query } from './database'
+import { auditLogService } from './audit-log'
 
 import type {
   ImportJob,
@@ -33,36 +34,58 @@ export const jobService = {
    * Upload file for import and queue the import job
    */
   async queueImport(file: File, userId: string): Promise<QueueJobResponse> {
-    // Upload file to storage first
-    const uploadedFile = await storage.createFile(BUCKET_ID, 'unique()', file)
+    try {
+      // Upload file to storage first
+      const uploadedFile = await storage.createFile(BUCKET_ID, 'unique()', file)
 
-    // Call Appwrite Function to queue the job
-    const execution = await functions.createExecution(
-      FUNCTION_ID,
-      JSON.stringify({
-        action: 'import-excel',
-        fileId: uploadedFile.$id,
-        userId,
-      }),
-      false, // async
-      '/', // path
-      ExecutionMethod.POST // method
-    )
+      // Call Appwrite Function to queue the job
+      const execution = await functions.createExecution(
+        FUNCTION_ID,
+        JSON.stringify({
+          action: 'import-excel',
+          fileId: uploadedFile.$id,
+          userId,
+        }),
+        false, // async
+        '/', // path
+        ExecutionMethod.POST // method
+      )
 
-    // Parse the response
-    const response = JSON.parse(execution.responseBody) as QueueJobResponse
+      // Parse the response
+      const response = JSON.parse(execution.responseBody) as QueueJobResponse
 
-    if (!response.success) {
-      // Clean up uploaded file on failure
-      try {
-        await storage.deleteFile(BUCKET_ID, uploadedFile.$id)
-      } catch {
-        // Ignore cleanup errors
+      if (!response.success) {
+        // Clean up uploaded file on failure
+        try {
+          await storage.deleteFile(BUCKET_ID, uploadedFile.$id)
+        } catch {
+          // Ignore cleanup errors
+        }
+        throw new Error(response.error || 'Failed to queue import job')
       }
-      throw new Error(response.error || 'Failed to queue import job')
-    }
 
-    return response
+      auditLogService.log('job_queue_import', 'job', {
+        resource_id: response.jobId,
+        action_details: {
+          action: 'import-excel',
+          fileId: uploadedFile.$id,
+          fileName: file.name,
+          fileSize: file.size,
+        },
+      }).catch(console.error)
+
+      return response
+    } catch (error) {
+      auditLogService.log('job_queue_import', 'job', {
+        action_details: {
+          action: 'import-excel',
+          fileName: file.name,
+        },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 
   /**
@@ -72,37 +95,57 @@ export const jobService = {
     userId: string,
     filters?: { type?: 'single' | 'bundle' }
   ): Promise<QueueJobResponse> {
-    const execution = await functions.createExecution(
-      FUNCTION_ID,
-      JSON.stringify({
-        action: 'export-excel',
-        userId,
-        filters,
-      }),
-      false, // async
-      '/', // path
-      ExecutionMethod.POST // method
-    )
+    try {
+      const execution = await functions.createExecution(
+        FUNCTION_ID,
+        JSON.stringify({
+          action: 'export-excel',
+          userId,
+          filters,
+        }),
+        false, // async
+        '/', // path
+        ExecutionMethod.POST // method
+      )
 
-    // Check if function executed successfully
-    if (execution.status === 'failed') {
-      console.error('Function execution failed:', execution.errors)
-      throw new Error(`Function failed: ${execution.errors || 'Unknown error'}`)
+      // Check if function executed successfully
+      if (execution.status === 'failed') {
+        console.error('Function execution failed:', execution.errors)
+        throw new Error(`Function failed: ${execution.errors || 'Unknown error'}`)
+      }
+
+      // Check for empty response
+      if (!execution.responseBody) {
+        console.error('Function returned empty response:', execution)
+        throw new Error('Function returned empty response. Check function logs in Appwrite Console.')
+      }
+
+      const response = JSON.parse(execution.responseBody) as QueueJobResponse
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to queue export job')
+      }
+
+      auditLogService.log('job_queue_export', 'job', {
+        resource_id: response.jobId,
+        action_details: {
+          action: 'export-excel',
+          filters,
+        },
+      }).catch(console.error)
+
+      return response
+    } catch (error) {
+      auditLogService.log('job_queue_export', 'job', {
+        action_details: {
+          action: 'export-excel',
+          filters,
+        },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
     }
-
-    // Check for empty response
-    if (!execution.responseBody) {
-      console.error('Function returned empty response:', execution)
-      throw new Error('Function returned empty response. Check function logs in Appwrite Console.')
-    }
-
-    const response = JSON.parse(execution.responseBody) as QueueJobResponse
-
-    if (!response.success) {
-      throw new Error(response.error || 'Failed to queue export job')
-    }
-
-    return response
   },
 
   /**
@@ -115,39 +158,64 @@ export const jobService = {
     format: 'excel' | 'pdf' = 'excel'
   ): Promise<QueueJobResponse> {
     const action = format === 'pdf' ? 'export-reporting-pdf' : 'export-reporting-excel'
-    const execution = await functions.createExecution(
-      FUNCTION_ID,
-      JSON.stringify({
-        action,
-        userId,
-        startDate,
-        endDate,
-        format,
-      }),
-      false, // async
-      '/', // path
-      ExecutionMethod.POST // method
-    )
 
-    // Check if function executed successfully
-    if (execution.status === 'failed') {
-      console.error('Function execution failed:', execution.errors)
-      throw new Error(`Function failed: ${execution.errors || 'Unknown error'}`)
+    try {
+      const execution = await functions.createExecution(
+        FUNCTION_ID,
+        JSON.stringify({
+          action,
+          userId,
+          startDate,
+          endDate,
+          format,
+        }),
+        false, // async
+        '/', // path
+        ExecutionMethod.POST // method
+      )
+
+      // Check if function executed successfully
+      if (execution.status === 'failed') {
+        console.error('Function execution failed:', execution.errors)
+        throw new Error(`Function failed: ${execution.errors || 'Unknown error'}`)
+      }
+
+      // Check for empty response
+      if (!execution.responseBody) {
+        console.error('Function returned empty response:', execution)
+        throw new Error('Function returned empty response. Check function logs in Appwrite Console.')
+      }
+
+      const response = JSON.parse(execution.responseBody) as QueueJobResponse
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to queue report export job')
+      }
+
+      auditLogService.log('job_queue_report_export', 'job', {
+        resource_id: response.jobId,
+        action_details: {
+          action,
+          startDate,
+          endDate,
+          format,
+        },
+      }).catch(console.error)
+
+      return response
+    } catch (error) {
+      auditLogService.log('job_queue_report_export', 'job', {
+        action_details: {
+          action,
+          startDate,
+          endDate,
+          format,
+        },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
     }
-
-    // Check for empty response
-    if (!execution.responseBody) {
-      console.error('Function returned empty response:', execution)
-      throw new Error('Function returned empty response. Check function logs in Appwrite Console.')
-    }
-
-    const response = JSON.parse(execution.responseBody) as QueueJobResponse
-
-    if (!response.success) {
-      throw new Error(response.error || 'Failed to queue report export job')
-    }
-
-    return response
   },
 
   /**
@@ -159,39 +227,63 @@ export const jobService = {
     recipients: string[],
     dateRange: string
   ): Promise<QueueJobResponse> {
-    const execution = await functions.createExecution(
-      FUNCTION_ID,
-      JSON.stringify({
-        action: 'send-report-email',
-        userId,
-        fileId,
-        recipients,
-        dateRange,
-      }),
-      false, // async
-      '/', // path
-      ExecutionMethod.POST // method
-    )
+    try {
+      const execution = await functions.createExecution(
+        FUNCTION_ID,
+        JSON.stringify({
+          action: 'send-report-email',
+          userId,
+          fileId,
+          recipients,
+          dateRange,
+        }),
+        false, // async
+        '/', // path
+        ExecutionMethod.POST // method
+      )
 
-    // Check if function executed successfully
-    if (execution.status === 'failed') {
-      console.error('Function execution failed:', execution.errors)
-      throw new Error(`Function failed: ${execution.errors || 'Unknown error'}`)
+      // Check if function executed successfully
+      if (execution.status === 'failed') {
+        console.error('Function execution failed:', execution.errors)
+        throw new Error(`Function failed: ${execution.errors || 'Unknown error'}`)
+      }
+
+      // Check for empty response
+      if (!execution.responseBody) {
+        console.error('Function returned empty response:', execution)
+        throw new Error('Function returned empty response. Check function logs in Appwrite Console.')
+      }
+
+      const response = JSON.parse(execution.responseBody) as QueueJobResponse
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to queue send report email job')
+      }
+
+      auditLogService.log('job_queue_send_email', 'job', {
+        resource_id: response.jobId,
+        action_details: {
+          action: 'send-report-email',
+          fileId,
+          recipientCount: recipients.length,
+          dateRange,
+        },
+      }).catch(console.error)
+
+      return response
+    } catch (error) {
+      auditLogService.log('job_queue_send_email', 'job', {
+        action_details: {
+          action: 'send-report-email',
+          fileId,
+          recipientCount: recipients.length,
+          dateRange,
+        },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
     }
-
-    // Check for empty response
-    if (!execution.responseBody) {
-      console.error('Function returned empty response:', execution)
-      throw new Error('Function returned empty response. Check function logs in Appwrite Console.')
-    }
-
-    const response = JSON.parse(execution.responseBody) as QueueJobResponse
-
-    if (!response.success) {
-      throw new Error(response.error || 'Failed to queue send report email job')
-    }
-
-    return response
   },
 
   /**
@@ -363,28 +455,82 @@ export const jobService = {
    * Download export file
    */
   async downloadExport(fileId: string): Promise<Blob> {
-    const url = storage.getFileDownload(BUCKET_ID, fileId)
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(`Failed to download file: ${response.statusText}`)
+    try {
+      const url = storage.getFileDownload(BUCKET_ID, fileId)
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`)
+      }
+      const blob = await response.blob()
+
+      auditLogService.log('job_download', 'job', {
+        resource_id: fileId,
+        action_details: {
+          fileId,
+          size: blob.size,
+        },
+      }).catch(console.error)
+
+      return blob
+    } catch (error) {
+      auditLogService.log('job_download', 'job', {
+        resource_id: fileId,
+        action_details: { fileId },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
     }
-    return response.blob()
   },
 
   /**
    * Delete a job record and its associated file
    */
   async deleteJob(jobId: string, fileId?: string | null): Promise<void> {
-    // Delete the associated file if it exists
-    if (fileId) {
+    try {
+      // Get job details before deletion for audit
+      let jobDetails: Record<string, unknown> = {}
       try {
-        await storage.deleteFile(BUCKET_ID, fileId)
+        const job = await databaseService.getDocument<ImportJob>(
+          COLLECTIONS.IMPORT_JOBS,
+          jobId
+        )
+        jobDetails = {
+          action: job.action,
+          status: job.status,
+          user_id: job.user_id,
+        }
       } catch {
-        // Ignore file deletion errors (file may already be deleted)
+        // Job may not exist, continue with deletion
       }
-    }
 
-    // Delete the job record
-    await databaseService.deleteDocument(COLLECTIONS.IMPORT_JOBS, jobId)
+      // Delete the associated file if it exists
+      if (fileId) {
+        try {
+          await storage.deleteFile(BUCKET_ID, fileId)
+        } catch {
+          // Ignore file deletion errors (file may already be deleted)
+        }
+      }
+
+      // Delete the job record
+      await databaseService.deleteDocument(COLLECTIONS.IMPORT_JOBS, jobId)
+
+      auditLogService.log('job_delete', 'job', {
+        resource_id: jobId,
+        action_details: {
+          ...jobDetails,
+          fileId,
+        },
+      }).catch(console.error)
+    } catch (error) {
+      auditLogService.log('job_delete', 'job', {
+        resource_id: jobId,
+        action_details: { fileId },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 }

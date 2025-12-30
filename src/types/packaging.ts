@@ -20,10 +20,35 @@ export interface PackagingItem extends Models.Document {
 }
 
 /**
+ * Bundle component info for display
+ */
+export interface BundleComponentInfo {
+  barcode: string
+  productName: string
+  quantity: number
+}
+
+/**
+ * Packaging item with product details (for display/caching)
+ */
+export interface PackagingItemWithProduct extends PackagingItem {
+  product_name: string
+  is_bundle?: boolean
+  bundle_components?: BundleComponentInfo[]
+}
+
+/**
  * Packaging record with its items expanded
  */
 export interface PackagingRecordWithItems extends PackagingRecord {
   items: PackagingItem[]
+}
+
+/**
+ * Packaging record with items including product details (for display/caching)
+ */
+export interface PackagingRecordWithProducts extends PackagingRecord {
+  items: PackagingItemWithProduct[]
 }
 
 /**

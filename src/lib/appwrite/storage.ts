@@ -1,6 +1,7 @@
 import type { ImageGravity, Models } from 'appwrite'
 
 import { ID, storage } from './config'
+import { auditLogService } from './audit-log'
 
 const BUCKET_ID = import.meta.env.VITE_APPWRITE_BUCKET_ID
 
@@ -12,16 +13,50 @@ export const storageService = {
     fileId?: string,
     permissions?: string[]
   ) {
-    return storage.createFile(
-      BUCKET_ID,
-      fileId ?? ID.unique(),
-      file,
-      permissions
-    )
+    try {
+      const result = await storage.createFile(
+        BUCKET_ID,
+        fileId ?? ID.unique(),
+        file,
+        permissions
+      )
+
+      auditLogService.log('storage_file_upload', 'storage', {
+        resource_id: result.$id,
+        action_details: {
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+        },
+      }).catch(console.error)
+
+      return result
+    } catch (error) {
+      auditLogService.log('storage_file_upload', 'storage', {
+        action_details: {
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+        },
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 
   async getFile(fileId: string) {
-    return storage.getFile(BUCKET_ID, fileId)
+    const file = await storage.getFile(BUCKET_ID, fileId)
+
+    auditLogService.log('storage_file_view', 'storage', {
+      resource_id: fileId,
+      action_details: {
+        fileName: file.name,
+        fileSize: file.sizeOriginal,
+      },
+    }).catch(console.error)
+
+    return file
   },
 
   async listFiles(queries?: string[], search?: string) {
@@ -29,7 +64,33 @@ export const storageService = {
   },
 
   async deleteFile(fileId: string) {
-    return storage.deleteFile(BUCKET_ID, fileId)
+    try {
+      // Get file details before deletion for audit
+      let fileDetails: Record<string, unknown> = {}
+      try {
+        const file = await storage.getFile(BUCKET_ID, fileId)
+        fileDetails = {
+          fileName: file.name,
+          fileSize: file.sizeOriginal,
+        }
+      } catch {
+        // File may not exist, continue with deletion
+      }
+
+      await storage.deleteFile(BUCKET_ID, fileId)
+
+      auditLogService.log('storage_file_delete', 'storage', {
+        resource_id: fileId,
+        action_details: fileDetails,
+      }).catch(console.error)
+    } catch (error) {
+      auditLogService.log('storage_file_delete', 'storage', {
+        resource_id: fileId,
+        status: 'failure',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      }).catch(console.error)
+      throw error
+    }
   },
 
   async updateFile(fileId: string, name?: string, permissions?: string[]) {
@@ -56,6 +117,10 @@ export const storageService = {
   },
 
   getFileDownload(fileId: string) {
+    auditLogService.log('storage_file_download', 'storage', {
+      resource_id: fileId,
+    }).catch(console.error)
+
     return storage.getFileDownload(BUCKET_ID, fileId)
   },
 

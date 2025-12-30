@@ -8,3 +8,14 @@ export { storageService } from './storage'
 export type { File } from './storage'
 export { productService, productComponentService } from './products'
 export { jobService } from './jobs'
+export {
+  auditLogService,
+  setAuditUserContext,
+  getAuditUserContext,
+  initAuditSession,
+  clearAuditSession,
+  sanitizeData,
+  captureRequestContext,
+  formatActionDetails,
+} from './audit-log'
+export { withAudit, withAuditSync, createAuditedService, extractors } from './audit-interceptor'
