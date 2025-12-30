@@ -1,33 +1,38 @@
 import { databaseService, Query } from './database'
 
-import type { PackagingCache, PackagingRecordWithItems } from '@/types/packaging'
+import type { PackagingCache, PackagingRecordWithProducts } from '@/types/packaging'
 import { COLLECTIONS } from '@/types/packaging'
 
 /**
  * Cache service for packaging data using Appwrite database
  * Implements cache-aside pattern for historical packaging records
+ * Cached data includes product names and bundle components for fast retrieval
  */
 export const packagingCacheService = {
   /**
    * Get cached packaging data for a specific date
    * @param dateString - Date in YYYY-MM-DD format
-   * @returns Cached packaging records or null if not cached
+   * @returns Cached packaging records with product info or null if not cached
    */
-  async get(dateString: string): Promise<PackagingRecordWithItems[] | null> {
+  async get(dateString: string): Promise<PackagingRecordWithProducts[] | null> {
     try {
+      console.log(`[Cache] Looking for cache: ${dateString}`)
       const result = await databaseService.listDocuments<PackagingCache>(
         COLLECTIONS.PACKAGING_CACHE,
         [Query.equal('cache_date', dateString), Query.limit(1)]
       )
 
       if (result.documents.length === 0) {
+        console.log(`[Cache] MISS - No cache found for ${dateString}`)
         return null
       }
 
       const cache = result.documents[0]
-      return JSON.parse(cache.data) as PackagingRecordWithItems[]
+      const parsed = JSON.parse(cache.data) as PackagingRecordWithProducts[]
+      console.log(`[Cache] HIT - Found ${parsed.length} records for ${dateString}`)
+      return parsed
     } catch (error) {
-      console.error('Error fetching packaging cache:', error)
+      console.error('[Cache] Error fetching packaging cache:', error)
       return null
     }
   },
@@ -35,11 +40,11 @@ export const packagingCacheService = {
   /**
    * Store packaging data in cache for a specific date
    * @param dateString - Date in YYYY-MM-DD format
-   * @param data - Packaging records to cache
+   * @param data - Packaging records with product info to cache
    */
   async set(
     dateString: string,
-    data: PackagingRecordWithItems[]
+    data: PackagingRecordWithProducts[]
   ): Promise<void> {
     try {
       // Check if cache already exists for this date

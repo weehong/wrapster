@@ -7,6 +7,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { fileURLToPath } from "url";
+import { createAuditLog } from "./lib/audit-log";
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -464,6 +465,16 @@ export const reportExportTask = task({
     try {
       await updateJobStatus(databases, jobId, "processing");
 
+      // Log job start
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'job_report_export_started',
+        resourceType: 'job',
+        resourceId: jobId,
+        actionDetails: { startDate, endDate, format },
+        status: 'success',
+      });
+
       // Fetch user information
       let exportedByName = "Unknown User";
       try {
@@ -675,6 +686,23 @@ export const reportExportTask = task({
         products: uniqueBarcodes.length,
       });
 
+      // Log job completion
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'job_report_export_completed',
+        resourceType: 'job',
+        resourceId: jobId,
+        actionDetails: {
+          fileId: file.$id,
+          fileName,
+          records: allRecords.length,
+          items: allItems.length,
+          products: uniqueBarcodes.length,
+          format,
+        },
+        status: 'success',
+      });
+
       logger.info("Report export completed", { fileId: file.$id, records: allRecords.length, items: allItems.length });
 
       return {
@@ -686,6 +714,17 @@ export const reportExportTask = task({
       };
     } catch (error) {
       logger.error("Report export failed", { error });
+
+      // Log job failure
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'job_report_export_completed',
+        resourceType: 'job',
+        resourceId: jobId,
+        status: 'failure',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      });
+
       await updateJobStatus(
         databases,
         jobId,

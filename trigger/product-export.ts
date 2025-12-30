@@ -2,6 +2,7 @@ import { task, logger } from "@trigger.dev/sdk/v3";
 import { Client, Databases, Storage, ID, Query } from "node-appwrite";
 import { InputFile } from "node-appwrite/file";
 import * as XLSX from "xlsx";
+import { createAuditLog } from "./lib/audit-log";
 
 interface ExportPayload {
   jobId: string;
@@ -92,6 +93,16 @@ export const productExportTask = task({
     try {
       // Update job status to processing
       await updateJobStatus(databases, jobId, "processing");
+
+      // Log job start
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'job_export_started',
+        resourceType: 'job',
+        resourceId: jobId,
+        actionDetails: { filters },
+        status: 'success',
+      });
 
       // Build query
       const queries: string[] = [];
@@ -192,6 +203,20 @@ export const productExportTask = task({
       // Update job status to completed
       await updateJobStatus(databases, jobId, "completed", file.$id);
 
+      // Log job completion
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'job_export_completed',
+        resourceType: 'job',
+        resourceId: jobId,
+        actionDetails: {
+          fileId: file.$id,
+          fileName,
+          totalProducts: allProducts.length,
+        },
+        status: 'success',
+      });
+
       logger.info("Export completed", { fileId: file.$id, fileName, totalProducts: allProducts.length });
 
       return {
@@ -201,6 +226,17 @@ export const productExportTask = task({
       };
     } catch (error) {
       logger.error("Export failed", { error });
+
+      // Log job failure
+      await createAuditLog(databases, {
+        userId,
+        actionType: 'job_export_completed',
+        resourceType: 'job',
+        resourceId: jobId,
+        status: 'failure',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      });
+
       await updateJobStatus(
         databases,
         jobId,
