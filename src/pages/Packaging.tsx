@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Info, Loader2, Plus, Trash2, X } from 'lucide-react'
+import { Info, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react'
 import {
   type ColumnDef,
   flexRender,
@@ -21,6 +21,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/date-picker'
 import {
@@ -54,7 +63,7 @@ import {
   packagingRecordService,
 } from '@/lib/appwrite/packaging'
 import { productService } from '@/lib/appwrite/products'
-import { formatTime, getTodayDate, isToday } from '@/lib/utils'
+import { formatTime, isToday } from '@/lib/utils'
 import type { PackagingItemWithProduct, PackagingRecordWithProducts } from '@/types/packaging'
 import type { Product } from '@/types/product'
 
@@ -99,6 +108,9 @@ export default function Packaging() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const isSelectedToday = isToday(formatDateToString(selectedDate))
 
+  // Edit mode state (for past records)
+  const [isEditMode, setIsEditMode] = useState(false)
+
   // Current record being edited (stored in state only until Complete)
   const [currentWaybill, setCurrentWaybill] = useState<string | null>(null)
   const [currentItems, setCurrentItems] = useState<LocalPackagingItem[]>([])
@@ -117,6 +129,16 @@ export default function Packaging() {
 
   // Delete dialog state
   const [deleteRecord, setDeleteRecord] = useState<PackagingRecordWithProducts | null>(null)
+
+  // Edit dialog state
+  const [editRecord, setEditRecord] = useState<PackagingRecordWithProducts | null>(null)
+  const [editWaybillNumber, setEditWaybillNumber] = useState('')
+  const [editItems, setEditItems] = useState<Array<{ barcode: string; productName: string }>>([])
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [editProductInput, setEditProductInput] = useState('')
+  const [editSearchResults, setEditSearchResults] = useState<Product[]>([])
+  const [isEditSearching, setIsEditSearching] = useState(false)
+  const [editProductPopoverOpen, setEditProductPopoverOpen] = useState(false)
 
   // Product not found dialog state
   const [productNotFoundBarcode, setProductNotFoundBarcode] = useState<string | null>(null)
@@ -279,6 +301,7 @@ export default function Packaging() {
     setCurrentItems([])
     setWaybillInput('')
     setProductInput('')
+    setIsEditMode(false) // Reset edit mode when changing dates
     fetchRecords()
   }, [fetchRecords])
 
@@ -312,11 +335,11 @@ export default function Packaging() {
       setIsSubmitting(true)
       setError(null)
 
-      const today = getTodayDate()
+      const dateStr = formatDateToString(selectedDate)
 
-      // Check if waybill already exists for today in database
+      // Check if waybill already exists for the selected date in database
       const existing = await packagingRecordService.getByDateAndWaybill(
-        today,
+        dateStr,
         waybillToSubmit
       )
 
@@ -337,7 +360,7 @@ export default function Packaging() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [waybillInput])
+  }, [waybillInput, selectedDate, t])
 
   // Handle product barcode submission (state only, no database)
   const handleProductSubmit = useCallback(async (scannedBarcode?: string) => {
@@ -501,11 +524,11 @@ export default function Packaging() {
       setIsSubmitting(true)
       setError(null)
 
-      const today = getTodayDate()
+      const dateStr = formatDateToString(selectedDate)
 
       // Create the packaging record in database
       const newRecord = await packagingRecordService.create({
-        packaging_date: today,
+        packaging_date: dateStr,
         waybill_number: currentWaybill,
       })
 
@@ -543,7 +566,12 @@ export default function Packaging() {
       // Invalidate products cache to reflect stock changes
       await queryClient.invalidateQueries({ queryKey: ['products'] })
 
-      // Add to today's records
+      // If adding to a historical date, refresh the cache (invalidate + re-create)
+      if (!isSelectedToday) {
+        await packagingRecordService.refreshCache(dateStr)
+      }
+
+      // Add to displayed records
       const completedRecord: PackagingRecordWithProducts = {
         ...newRecord,
         items: savedItems,
@@ -565,7 +593,7 @@ export default function Packaging() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [currentWaybill, currentItems, queryClient, t])
+  }, [currentWaybill, currentItems, queryClient, t, selectedDate, isSelectedToday])
 
   // Barcode scanner detection and Enter key handling
   useEffect(() => {
@@ -729,6 +757,117 @@ export default function Packaging() {
     }
   }
 
+  // Handle opening the edit dialog
+  const handleEditRecord = useCallback((record: PackagingRecordWithProducts) => {
+    setEditRecord(record)
+    setEditWaybillNumber(record.waybill_number)
+    setEditItems(
+      record.items.map((item) => ({
+        barcode: item.product_barcode,
+        productName: item.product_name,
+      }))
+    )
+    setEditProductInput('')
+    setEditSearchResults([])
+    setEditProductPopoverOpen(false)
+  }, [])
+
+  // Search products in edit dialog
+  const searchEditProducts = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setEditSearchResults([])
+      return
+    }
+
+    try {
+      setIsEditSearching(true)
+      const result = await productService.list({ search: query, limit: 10 })
+      setEditSearchResults(result.documents)
+    } catch (err) {
+      console.error('Error searching products:', err)
+      setEditSearchResults([])
+    } finally {
+      setIsEditSearching(false)
+    }
+  }, [])
+
+  // Handle product search in edit dialog
+  useEffect(() => {
+    if (editProductPopoverOpen && editProductInput.trim()) {
+      searchEditProducts(editProductInput)
+    } else {
+      setEditSearchResults([])
+    }
+  }, [editProductPopoverOpen, editProductInput, searchEditProducts])
+
+  // Add product to edit items
+  const handleEditAddProduct = async (product: Product) => {
+    setEditItems((prev) => [
+      ...prev,
+      { barcode: product.barcode, productName: product.name },
+    ])
+    setEditProductInput('')
+    setEditProductPopoverOpen(false)
+  }
+
+  // Remove product from edit items
+  const handleEditRemoveItem = (index: number) => {
+    setEditItems((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  // Submit edit changes
+  const handleEditSubmit = async () => {
+    if (!editRecord) return
+
+    if (!editWaybillNumber.trim()) {
+      toast.error(t('packaging.enterWaybillError'))
+      return
+    }
+
+    if (editItems.length === 0) {
+      toast.error(t('packaging.scanAtLeastOne'))
+      return
+    }
+
+    try {
+      setIsUpdating(true)
+
+      // Update the waybill number if changed
+      if (editWaybillNumber !== editRecord.waybill_number) {
+        await packagingRecordService.update(editRecord.$id, {
+          waybill_number: editWaybillNumber,
+        })
+      }
+
+      // Check if items changed
+      const originalBarcodes = editRecord.items.map((i) => i.product_barcode).sort()
+      const newBarcodes = editItems.map((i) => i.barcode).sort()
+      const itemsChanged =
+        originalBarcodes.length !== newBarcodes.length ||
+        originalBarcodes.some((b, i) => b !== newBarcodes[i])
+
+      if (itemsChanged) {
+        await packagingRecordService.updateItems(
+          editRecord.$id,
+          editItems.map((item) => ({
+            product_barcode: item.barcode,
+          }))
+        )
+      }
+
+      // Refresh records
+      await fetchRecords()
+
+      setEditRecord(null)
+      toast.success(t('packaging.recordUpdated'))
+    } catch (err) {
+      console.error('Error updating record:', err)
+      toast.error(t('packaging.updateError'))
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
   // Handle keyboard events for manual input
   const handleWaybillKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !scanHandledRef.current) {
@@ -825,7 +964,7 @@ export default function Packaging() {
         header: t('common.date'),
         cell: ({ row }) => (
           <div className="text-muted-foreground">
-            {format(new Date(row.original.$createdAt), 'yyyy-MM-dd')}
+            {row.original.packaging_date}
           </div>
         ),
         size: 100,
@@ -843,26 +982,41 @@ export default function Packaging() {
       {
         id: 'actions',
         header: () => <div className="text-center">{t('common.actions')}</div>,
-        cell: ({ row }) => (
-          <div className="text-center">
-            {isSelectedToday ? (
+        cell: ({ row }) => {
+          // Show actions for today, or for past dates when in edit mode
+          const showActions = isSelectedToday || isEditMode
+
+          if (!showActions) {
+            return <div className="text-center text-muted-foreground text-xs">-</div>
+          }
+
+          return (
+            <div className="flex items-center justify-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleEditRecord(row.original)}
+                className="h-8 w-8"
+                title={t('common.edit')}
+              >
+                <Pencil className="size-4" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setDeleteRecord(row.original)}
                 className="text-destructive hover:text-destructive h-8 w-8"
+                title={t('common.delete')}
               >
                 <Trash2 className="size-4" />
               </Button>
-            ) : (
-              <span className="text-muted-foreground text-xs">-</span>
-            )}
-          </div>
-        ),
-        size: 80,
+            </div>
+          )
+        },
+        size: 100,
       },
     ],
-    [isSelectedToday]
+    [isSelectedToday, isEditMode, handleEditRecord, t]
   )
 
   const table = useReactTable({
@@ -885,7 +1039,18 @@ export default function Packaging() {
             date={selectedDate}
             onDateChange={(date) => date && setSelectedDate(date)}
             disabled={isSubmitting}
+            maxDate={isEditMode ? new Date(Date.now() - 86400000) : undefined} // Yesterday when in edit mode
           />
+          {!isSelectedToday && (
+            <Button
+              variant={isEditMode ? 'default' : 'outline'}
+              onClick={() => setIsEditMode(!isEditMode)}
+              disabled={isSubmitting}
+            >
+              <Pencil className="mr-2 size-4" />
+              {isEditMode ? t('packaging.editing') : t('common.edit')}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -923,8 +1088,8 @@ export default function Packaging() {
             ))}
           </TableHeader>
           <TableBody>
-            {/* Input Row - Only shown for today */}
-            {isSelectedToday && (
+            {/* Input Row - Shown for today, or for past dates when in edit mode */}
+            {(isSelectedToday || isEditMode) && (
               <TableRow>
                 <TableCell className="text-muted-foreground text-center align-top pt-3" style={{ width: 64 }}>
                   <Plus className="mx-auto size-4" />
@@ -1270,6 +1435,164 @@ export default function Packaging() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Record Dialog */}
+      <Dialog
+        open={!!editRecord}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditRecord(null)
+            setEditWaybillNumber('')
+            setEditItems([])
+            setEditProductInput('')
+            setEditSearchResults([])
+            setEditProductPopoverOpen(false)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{t('packaging.editRecordTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('packaging.editRecordDescription')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto space-y-4 py-4">
+            {/* Waybill Number Input */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-waybill">{t('packaging.editWaybillNumber')}</Label>
+              <Input
+                id="edit-waybill"
+                value={editWaybillNumber}
+                onChange={(e) => setEditWaybillNumber(e.target.value)}
+                className="font-mono"
+                disabled={isUpdating}
+              />
+            </div>
+
+            {/* Scanned Items */}
+            <div className="space-y-2">
+              <Label>{t('packaging.scannedItems')}</Label>
+
+              {/* Add Product Input */}
+              <Popover open={editProductPopoverOpen} onOpenChange={setEditProductPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <div>
+                    <Input
+                      value={editProductInput}
+                      onChange={(e) => {
+                        setEditProductInput(e.target.value)
+                        if (e.target.value.length > 0) {
+                          setEditProductPopoverOpen(true)
+                        }
+                      }}
+                      onFocus={() => {
+                        if (editProductInput.length > 0) {
+                          setEditProductPopoverOpen(true)
+                        }
+                      }}
+                      placeholder={t('packaging.scanProduct')}
+                      disabled={isUpdating}
+                      autoComplete="off"
+                      className="font-mono"
+                    />
+                  </div>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-[--radix-popover-trigger-width] p-0"
+                  align="start"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  <Command shouldFilter={false}>
+                    <CommandList>
+                      {isEditSearching ? (
+                        <div className="py-6 text-center text-sm">
+                          <Loader2 className="mx-auto size-4 animate-spin" />
+                        </div>
+                      ) : editSearchResults.length === 0 ? (
+                        <CommandEmpty>No products found.</CommandEmpty>
+                      ) : (
+                        <CommandGroup>
+                          {editSearchResults.map((product) => (
+                            <CommandItem
+                              key={product.$id}
+                              value={product.$id}
+                              onSelect={() => handleEditAddProduct(product)}
+                            >
+                              <div className="flex flex-1 flex-col">
+                                <span>{product.name}</span>
+                                <span className="text-muted-foreground text-xs font-mono">
+                                  {product.barcode}
+                                  {product.sku_code && ` • ${product.sku_code}`}
+                                </span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {/* Items List */}
+              <div className="rounded-md border max-h-[200px] overflow-auto">
+                {editItems.length === 0 ? (
+                  <div className="p-4 text-center text-muted-foreground text-sm">
+                    {t('packaging.noItemsScanned')}
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {editItems.map((item, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between px-3 py-2"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">
+                            {item.productName}
+                          </div>
+                          <div className="text-xs text-muted-foreground font-mono">
+                            {item.barcode}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditRemoveItem(index)}
+                          className="shrink-0 h-8 w-8 text-muted-foreground hover:text-destructive"
+                          disabled={isUpdating}
+                        >
+                          <X className="size-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditRecord(null)}
+              disabled={isUpdating}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={handleEditSubmit} disabled={isUpdating}>
+              {isUpdating ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  {t('packaging.updating')}
+                </>
+              ) : (
+                t('common.save')
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div >
   )
 }
