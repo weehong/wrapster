@@ -781,6 +781,7 @@ export const packagingItemService = {
       [
         Query.equal('packaging_record_id', recordId),
         Query.orderDesc('scanned_at'),
+        Query.limit(500), // Override Appwrite's default limit of 25
       ]
     )
     return result.documents
