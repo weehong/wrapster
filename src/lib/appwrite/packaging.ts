@@ -545,6 +545,27 @@ export const packagingRecordService = {
   },
 
   /**
+   * Refresh cache for a specific date
+   * Invalidates existing cache and re-fetches from database
+   */
+  async refreshCache(date: string): Promise<void> {
+    try {
+      // Invalidate existing cache
+      await packagingCacheService.invalidate(date)
+
+      // Re-fetch and cache (only for non-today dates since today is not cached)
+      const today = getTodayDate()
+      if (date !== today) {
+        const records = await this.listByDate(date)
+        const enrichedRecords = await this.enrichWithProducts(records)
+        await packagingCacheService.set(date, enrichedRecords)
+      }
+    } catch (error) {
+      console.error('Failed to refresh packaging cache:', error)
+    }
+  },
+
+  /**
    * Update a packaging record (waybill number)
    */
   async update(
@@ -665,8 +686,9 @@ export const packagingRecordService = {
    */
   async delete(recordId: string): Promise<void> {
     try {
-      // Get record details before deletion for audit
+      // Get record details before deletion for audit and cache refresh
       let recordDetails: Record<string, unknown> = {}
+      let packagingDate: string | null = null
       try {
         const record = await databaseService.getDocument<PackagingRecord>(
           COLLECTIONS.PACKAGING_RECORDS,
@@ -676,6 +698,7 @@ export const packagingRecordService = {
           packaging_date: record.packaging_date,
           waybill_number: record.waybill_number,
         }
+        packagingDate = record.packaging_date
       } catch {
         // Record may not exist, continue with deletion
       }
