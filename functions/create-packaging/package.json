@@ -1,0 +1,9 @@
+{
+  "name": "create-packaging",
+  "version": "1.0.0",
+  "description": "Appwrite Function to create packaging records with items (Server SDK - no rate limits)",
+  "main": "src/main.js",
+  "dependencies": {
+    "node-appwrite": "^14.0.0"
+  }
+}

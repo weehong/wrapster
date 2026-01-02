@@ -46,6 +46,126 @@
                 "files.read",
                 "files.write"
             ]
+        },
+        {
+            "$id": "create-packaging",
+            "name": "Create Packaging - Development",
+            "runtime": "node-18.0",
+            "execute": [
+                "users"
+            ],
+            "events": [],
+            "schedule": "",
+            "timeout": 120,
+            "enabled": true,
+            "logging": true,
+            "entrypoint": "src/main.js",
+            "commands": "npm install",
+            "path": "functions/create-packaging",
+            "scopes": [
+                "databases.read",
+                "databases.write"
+            ]
+        },
+        {
+            "$id": "create-packaging-prod",
+            "name": "Create Packaging - Production",
+            "runtime": "node-18.0",
+            "execute": [
+                "users"
+            ],
+            "events": [],
+            "schedule": "",
+            "timeout": 120,
+            "enabled": true,
+            "logging": true,
+            "entrypoint": "src/main.js",
+            "commands": "npm install",
+            "path": "functions/create-packaging",
+            "scopes": [
+                "databases.read",
+                "databases.write"
+            ]
+        },
+        {
+            "$id": "update-packaging",
+            "name": "Update Packaging - Development",
+            "runtime": "node-18.0",
+            "execute": [
+                "users"
+            ],
+            "events": [],
+            "schedule": "",
+            "timeout": 120,
+            "enabled": true,
+            "logging": true,
+            "entrypoint": "src/main.js",
+            "commands": "npm install",
+            "path": "functions/update-packaging",
+            "scopes": [
+                "databases.read",
+                "databases.write"
+            ]
+        },
+        {
+            "$id": "update-packaging-prod",
+            "name": "Update Packaging - Production",
+            "runtime": "node-18.0",
+            "execute": [
+                "users"
+            ],
+            "events": [],
+            "schedule": "",
+            "timeout": 120,
+            "enabled": true,
+            "logging": true,
+            "entrypoint": "src/main.js",
+            "commands": "npm install",
+            "path": "functions/update-packaging",
+            "scopes": [
+                "databases.read",
+                "databases.write"
+            ]
+        },
+        {
+            "$id": "delete-packaging",
+            "name": "Delete Packaging - Development",
+            "runtime": "node-18.0",
+            "execute": [
+                "users"
+            ],
+            "events": [],
+            "schedule": "",
+            "timeout": 120,
+            "enabled": true,
+            "logging": true,
+            "entrypoint": "src/main.js",
+            "commands": "npm install",
+            "path": "functions/delete-packaging",
+            "scopes": [
+                "databases.read",
+                "databases.write"
+            ]
+        },
+        {
+            "$id": "delete-packaging-prod",
+            "name": "Delete Packaging - Production",
+            "runtime": "node-18.0",
+            "execute": [
+                "users"
+            ],
+            "events": [],
+            "schedule": "",
+            "timeout": 120,
+            "enabled": true,
+            "logging": true,
+            "entrypoint": "src/main.js",
+            "commands": "npm install",
+            "path": "functions/delete-packaging",
+            "scopes": [
+                "databases.read",
+                "databases.write"
+            ]
         }
     ],
     "tablesDB": [

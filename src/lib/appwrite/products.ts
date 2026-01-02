@@ -13,6 +13,60 @@ import { COLLECTIONS } from '@/types/product'
 
 export const productService = {
   /**
+   * Internal: Get a product by ID without audit logging
+   * Use for batch operations where we log once at the end
+   */
+  async _getByIdInternal(productId: string): Promise<Product> {
+    return databaseService.getDocument<Product>(COLLECTIONS.PRODUCTS, productId)
+  },
+
+  /**
+   * Internal: Batch fetch products by IDs without audit logging
+   */
+  async _getByIdsInternal(productIds: string[]): Promise<Map<string, Product>> {
+    if (productIds.length === 0) return new Map()
+
+    const result = await databaseService.listDocuments<Product>(COLLECTIONS.PRODUCTS, [
+      Query.equal('$id', productIds),
+      Query.limit(productIds.length),
+    ])
+
+    const productMap = new Map<string, Product>()
+    for (const product of result.documents) {
+      productMap.set(product.$id, product)
+    }
+    return productMap
+  },
+
+  /**
+   * Internal: Batch fetch products by barcodes without audit logging
+   */
+  async _getByBarcodesInternal(barcodes: string[]): Promise<Map<string, Product>> {
+    if (barcodes.length === 0) return new Map()
+
+    const result = await databaseService.listDocuments<Product>(COLLECTIONS.PRODUCTS, [
+      Query.equal('barcode', barcodes),
+      Query.limit(barcodes.length),
+    ])
+
+    const productMap = new Map<string, Product>()
+    for (const product of result.documents) {
+      productMap.set(product.barcode, product)
+    }
+    return productMap
+  },
+
+  /**
+   * Internal: Update stock without individual audit logging
+   * Used for batch operations
+   */
+  async _updateStockInternal(productId: string, newQuantity: number): Promise<Product> {
+    return databaseService.updateDocument<Product>(COLLECTIONS.PRODUCTS, productId, {
+      stock_quantity: Math.max(0, newQuantity),
+    })
+  },
+
+  /**
    * Create a new product
    */
   async create(data: CreateProductInput): Promise<Product> {
@@ -301,6 +355,7 @@ export const productService = {
   /**
    * Calculate stock requirements for a list of packaging items
    * Returns a map of product ID to required quantity
+   * Optimized: Uses batch fetch for single products (1 API call instead of N)
    */
   async calculateStockRequirements(
     items: Array<{
@@ -314,6 +369,18 @@ export const productService = {
   ): Promise<Map<string, { product: Product; required: number }>> {
     const requirements = new Map<string, { product: Product; required: number }>()
 
+    // Collect barcodes for single products that need to be fetched
+    const singleProductBarcodes: string[] = []
+    for (const item of items) {
+      if (!item.is_bundle || !item.bundle_components) {
+        singleProductBarcodes.push(item.product_barcode)
+      }
+    }
+
+    // Batch fetch all single products at once (1 API call)
+    const productMap = await this._getByBarcodesInternal(singleProductBarcodes)
+
+    // Process all items
     for (const item of items) {
       if (item.is_bundle && item.bundle_components) {
         // For bundles, deduct from each component
@@ -330,8 +397,8 @@ export const productService = {
           }
         }
       } else {
-        // For single products, deduct 1
-        const product = await this.getByBarcode(item.product_barcode)
+        // For single products, deduct 1 (use pre-fetched product)
+        const product = productMap.get(item.product_barcode)
         if (product) {
           const existing = requirements.get(product.$id)
           if (existing) {
@@ -397,6 +464,7 @@ export const productService = {
   /**
    * Deduct stock for packaging items
    * Should be called after packaging record is successfully created
+   * Optimized: Uses batch fetch and parallel updates with a single audit log
    */
   async deductStockForPackaging(
     items: Array<{
@@ -410,56 +478,114 @@ export const productService = {
   ): Promise<{ success: boolean; errors: string[] }> {
     const requirements = await this.calculateStockRequirements(items)
     const errors: string[] = []
-    const updatedProducts: Array<{ productId: string; previousStock: number }> = []
+    const stockUpdates: Array<{
+      productId: string
+      productName: string
+      previousStock: number
+      newStock: number
+    }> = []
 
+    // Batch fetch all products to get latest stock (1 API call)
+    const productIds = Array.from(requirements.keys())
+    const latestProducts = await this._getByIdsInternal(productIds)
+
+    // Calculate new stock values and validate
     for (const [productId, { product, required }] of requirements) {
-      try {
-        const latestProduct = await this.getById(productId)
-        const newStock = latestProduct.stock_quantity - required
-
-        if (newStock < 0) {
-          errors.push(`Insufficient stock for ${product.name}: required ${required}, available ${latestProduct.stock_quantity}`)
-          continue
-        }
-
-        updatedProducts.push({ productId, previousStock: latestProduct.stock_quantity })
-        await this.updateStock(productId, newStock)
-      } catch (error) {
-        errors.push(`Failed to update stock for ${product.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const latestProduct = latestProducts.get(productId)
+      if (!latestProduct) {
+        errors.push(`Product not found: ${product.name}`)
+        continue
       }
+
+      const newStock = latestProduct.stock_quantity - required
+      if (newStock < 0) {
+        errors.push(
+          `Insufficient stock for ${product.name}: required ${required}, available ${latestProduct.stock_quantity}`
+        )
+        continue
+      }
+
+      stockUpdates.push({
+        productId,
+        productName: product.name,
+        previousStock: latestProduct.stock_quantity,
+        newStock,
+      })
     }
 
-    // If there were errors, attempt to rollback successful updates
+    // If validation errors, don't proceed with updates
     if (errors.length > 0) {
-      for (const { productId, previousStock } of updatedProducts) {
-        try {
-          await this.updateStock(productId, previousStock)
-        } catch {
-          // Log but don't throw - we're already in error recovery
-          console.error(`Failed to rollback stock for product ${productId}`)
-        }
+      const result = { success: false, errors }
+      auditLogService
+        .log('product_stock_deduct', 'product', {
+          action_details: {
+            itemCount: items.length,
+            productsUpdated: 0,
+            success: false,
+            errors: result.errors,
+          },
+          status: 'failure',
+          error_message: result.errors.join('; '),
+        })
+        .catch(console.error)
+      return result
+    }
+
+    // Perform all stock updates in parallel (N API calls, but no audit logs per update)
+    const updateResults = await Promise.allSettled(
+      stockUpdates.map(({ productId, newStock }) =>
+        this._updateStockInternal(productId, newStock)
+      )
+    )
+
+    // Check for update failures
+    const failedUpdates: typeof stockUpdates = []
+    updateResults.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        const update = stockUpdates[index]
+        errors.push(`Failed to update stock for ${update.productName}: ${result.reason}`)
+        failedUpdates.push(update)
       }
+    })
+
+    // If some updates failed, attempt to rollback successful ones
+    if (failedUpdates.length > 0) {
+      const successfulUpdates = stockUpdates.filter((_, i) => updateResults[i].status === 'fulfilled')
+      await Promise.allSettled(
+        successfulUpdates.map(({ productId, previousStock }) =>
+          this._updateStockInternal(productId, previousStock)
+        )
+      )
     }
 
     const result = { success: errors.length === 0, errors }
 
-    // Log the overall deduction operation
-    auditLogService.log('product_stock_deduct', 'product', {
-      action_details: {
-        itemCount: items.length,
-        productsUpdated: updatedProducts.length,
-        success: result.success,
-        errors: result.errors,
-      },
-      status: result.success ? 'success' : 'failure',
-      error_message: result.errors.length > 0 ? result.errors.join('; ') : undefined,
-    }).catch(console.error)
+    // Log a single audit entry for the entire batch operation
+    auditLogService
+      .log('product_stock_deduct', 'product', {
+        action_details: {
+          itemCount: items.length,
+          productsUpdated: stockUpdates.length - failedUpdates.length,
+          updates: stockUpdates.map((u) => ({
+            barcode: requirements.get(u.productId)?.product.barcode,
+            name: u.productName,
+            previous: u.previousStock,
+            new: u.newStock,
+            deducted: u.previousStock - u.newStock,
+          })),
+          success: result.success,
+        },
+        status: result.success ? 'success' : 'failure',
+        error_message: result.errors.length > 0 ? result.errors.join('; ') : undefined,
+      })
+      .catch(console.error)
 
     return result
   },
 
   /**
    * Restore stock when a packaging record is deleted
+   * Optimized: Uses batch fetch and parallel updates with a single audit log
    */
   async restoreStockForPackaging(
     items: Array<{
@@ -473,32 +599,72 @@ export const productService = {
   ): Promise<{ success: boolean; errors: string[] }> {
     const requirements = await this.calculateStockRequirements(items)
     const errors: string[] = []
-    let restoredCount = 0
+    const stockUpdates: Array<{
+      productId: string
+      productName: string
+      previousStock: number
+      newStock: number
+      restored: number
+    }> = []
 
+    // Batch fetch all products to get latest stock (1 API call)
+    const productIds = Array.from(requirements.keys())
+    const latestProducts = await this._getByIdsInternal(productIds)
+
+    // Calculate new stock values
     for (const [productId, { product, required }] of requirements) {
-      try {
-        const latestProduct = await this.getById(productId)
-        const newStock = latestProduct.stock_quantity + required
-        await this.updateStock(productId, newStock)
-        restoredCount++
-      } catch (error) {
-        errors.push(`Failed to restore stock for ${product.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const latestProduct = latestProducts.get(productId)
+      if (!latestProduct) {
+        errors.push(`Product not found: ${product.name}`)
+        continue
       }
+
+      stockUpdates.push({
+        productId,
+        productName: product.name,
+        previousStock: latestProduct.stock_quantity,
+        newStock: latestProduct.stock_quantity + required,
+        restored: required,
+      })
     }
 
+    // Perform all stock updates in parallel (N API calls, no individual audit logs)
+    const updateResults = await Promise.allSettled(
+      stockUpdates.map(({ productId, newStock }) =>
+        this._updateStockInternal(productId, newStock)
+      )
+    )
+
+    // Check for update failures
+    updateResults.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        const update = stockUpdates[index]
+        errors.push(`Failed to restore stock for ${update.productName}: ${result.reason}`)
+      }
+    })
+
+    const successCount = updateResults.filter((r) => r.status === 'fulfilled').length
     const result = { success: errors.length === 0, errors }
 
-    // Log the overall restoration operation
-    auditLogService.log('product_stock_restore', 'product', {
-      action_details: {
-        itemCount: items.length,
-        productsRestored: restoredCount,
-        success: result.success,
-        errors: result.errors,
-      },
-      status: result.success ? 'success' : 'failure',
-      error_message: result.errors.length > 0 ? result.errors.join('; ') : undefined,
-    }).catch(console.error)
+    // Log a single audit entry for the entire batch operation
+    auditLogService
+      .log('product_stock_restore', 'product', {
+        action_details: {
+          itemCount: items.length,
+          productsRestored: successCount,
+          updates: stockUpdates.map((u) => ({
+            barcode: requirements.get(u.productId)?.product.barcode,
+            name: u.productName,
+            previous: u.previousStock,
+            new: u.newStock,
+            restored: u.restored,
+          })),
+          success: result.success,
+        },
+        status: result.success ? 'success' : 'failure',
+        error_message: result.errors.length > 0 ? result.errors.join('; ') : undefined,
+      })
+      .catch(console.error)
 
     return result
   },

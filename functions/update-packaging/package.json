@@ -1,0 +1,9 @@
+{
+  "name": "update-packaging",
+  "version": "1.0.0",
+  "description": "Appwrite Function to update packaging records and items (Server SDK - no rate limits)",
+  "main": "src/main.js",
+  "dependencies": {
+    "node-appwrite": "^14.0.0"
+  }
+}
