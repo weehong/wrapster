@@ -58,10 +58,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import {
-  packagingItemService,
-  packagingRecordService,
-} from '@/lib/appwrite/packaging'
+import { packagingRecordService } from '@/lib/appwrite/packaging'
 import { productService } from '@/lib/appwrite/products'
 import { formatTime, getTodayDate, isToday } from '@/lib/utils'
 import type { PackagingItemWithProduct, PackagingRecordWithProducts } from '@/types/packaging'
@@ -504,6 +501,7 @@ export default function Packaging() {
   }, [restoreStock])
 
   // Handle completing current waybill - save to database
+  // Uses Appwrite Function (Server SDK) to bypass rate limits
   const handleCompleteWaybill = useCallback(async () => {
     if (!currentWaybill || currentItems.length === 0) {
       toast.error(t('packaging.scanAtLeastOne'))
@@ -516,42 +514,58 @@ export default function Packaging() {
 
       const dateStr = formatDateToString(selectedDate)
 
-      // Create the packaging record in database
-      const newRecord = await packagingRecordService.create({
-        packaging_date: dateStr,
-        waybill_number: currentWaybill,
-      })
-
-      // Create all items in database
-      const savedItems: PackagingItemWithProduct[] = await Promise.all(
-        currentItems.map(async (item) => {
-          const savedItem = await packagingItemService.create({
-            packaging_record_id: newRecord.$id,
-            product_barcode: item.barcode,
-          })
-          return {
-            ...savedItem,
-            product_name: item.productName,
-            is_bundle: item.isBundle,
-            bundle_components: item.bundleComponents,
+      // Calculate stock updates for the function
+      // For bundles: deduct from each component
+      // For single products: deduct 1
+      const stockUpdatesMap = new Map<string, number>()
+      for (const item of currentItems) {
+        if (item.isBundle && item.bundleComponents) {
+          for (const comp of item.bundleComponents) {
+            const current = stockUpdatesMap.get(comp.product.$id) || 0
+            stockUpdatesMap.set(comp.product.$id, current + comp.quantity)
           }
-        })
+        } else if (item.product) {
+          const current = stockUpdatesMap.get(item.product.$id) || 0
+          stockUpdatesMap.set(item.product.$id, current + 1)
+        }
+      }
+
+      const stockUpdates = Array.from(stockUpdatesMap.entries()).map(
+        ([product_id, deduct_amount]) => ({ product_id, deduct_amount })
       )
 
-      // Deduct stock from database
-      const stockItems = currentItems.map(item => ({
-        product_barcode: item.barcode,
-        is_bundle: item.isBundle,
-        bundle_components: item.bundleComponents?.map(comp => ({
-          product: comp.product,
-          quantity: comp.quantity,
-        })),
-      }))
-      const stockResult = await productService.deductStockForPackaging(stockItems)
-      if (!stockResult.success) {
-        console.error('Stock deduction errors:', stockResult.errors)
+      // Call Appwrite Function - handles everything server-side with NO RATE LIMITS:
+      // - Creates packaging record
+      // - Creates all items
+      // - Updates all product stocks
+      // - Creates single audit log
+      const { record: newRecord, items: savedDbItems, stockUpdateSuccess } =
+        await packagingRecordService.createWithItemsViaFunction(
+          {
+            packaging_date: dateStr,
+            waybill_number: currentWaybill,
+          },
+          currentItems.map((item) => ({
+            product_barcode: item.barcode,
+            product_name: item.productName,
+          })),
+          stockUpdates
+        )
+
+      if (!stockUpdateSuccess) {
+        console.error('Stock deduction had errors')
         toast.error(t('packaging.stockDeductionError'))
       }
+
+      // Map saved items with product info for display
+      const savedItems: PackagingItemWithProduct[] = savedDbItems.map(
+        (savedItem, index) => ({
+          ...savedItem,
+          product_name: currentItems[index].productName,
+          is_bundle: currentItems[index].isBundle,
+          bundle_components: currentItems[index].bundleComponents,
+        })
+      )
 
       // Invalidate products cache to reflect stock changes
       await queryClient.invalidateQueries({ queryKey: ['products'] })
@@ -578,7 +592,7 @@ export default function Packaging() {
     } finally {
       setIsSubmitting(false)
     }
-  }, [currentWaybill, currentItems, queryClient, t, selectedDate, isSelectedToday])
+  }, [currentWaybill, currentItems, queryClient, t, selectedDate])
 
   // Barcode scanner detection and Enter key handling
   useEffect(() => {
@@ -703,29 +717,18 @@ export default function Packaging() {
     return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [currentWaybill, currentItems.length, productInput, handleWaybillSubmit, handleProductSubmit, handleCompleteWaybill, productNotFoundBarcode, waybillExistsNumber, insufficientStockItems, deleteRecord])
 
-  // Handle delete record
+  // Handle delete record - uses Appwrite Function for no rate limits
   const handleDeleteRecord = async () => {
     if (!deleteRecord) return
 
     try {
       setIsSubmitting(true)
 
-      // Prepare items for stock restoration
-      // Note: For saved records, bundle_components don't have full product info,
-      // so we skip bundle component stock restoration for those
-      const stockItems = deleteRecord.items.map(item => ({
-        product_barcode: item.product_barcode,
-        is_bundle: item.is_bundle,
-        bundle_components: undefined, // Skip bundle stock restoration for saved records
-      }))
+      // Delete via Appwrite Function - handles record deletion, item deletion, and stock restoration
+      const result = await packagingRecordService.deleteViaFunction(deleteRecord.$id, true)
 
-      // Delete the packaging record
-      await packagingRecordService.delete(deleteRecord.$id)
-
-      // Restore stock in database
-      const stockResult = await productService.restoreStockForPackaging(stockItems)
-      if (!stockResult.success) {
-        console.error('Stock restoration errors:', stockResult.errors)
+      if (!result.stockRestoreSuccess) {
+        console.error('Stock restoration had errors')
         toast.error(t('packaging.stockRestoreError'))
       }
 
