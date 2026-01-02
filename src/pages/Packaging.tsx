@@ -60,7 +60,7 @@ import {
 } from '@/components/ui/tooltip'
 import { packagingRecordService } from '@/lib/appwrite/packaging'
 import { productService } from '@/lib/appwrite/products'
-import { formatTime, getTodayDate, isToday } from '@/lib/utils'
+import { formatTime, isToday } from '@/lib/utils'
 import type { PackagingItemWithProduct, PackagingRecordWithProducts } from '@/types/packaging'
 import type { Product } from '@/types/product'
 
@@ -143,6 +143,16 @@ export default function Packaging() {
   const [searchResults, setSearchResults] = useState<Product[]>([])
   const [isSearchingProducts, setIsSearchingProducts] = useState(false)
   const [productPopoverOpen, setProductPopoverOpen] = useState(false)
+
+  // Edit record dialog state
+  const [editRecord, setEditRecord] = useState<PackagingRecordWithProducts | null>(null)
+  const [editWaybillNumber, setEditWaybillNumber] = useState('')
+  const [editItems, setEditItems] = useState<Array<{ barcode: string; productName: string }>>([])
+  const [editProductInput, setEditProductInput] = useState('')
+  const [editSearchResults, setEditSearchResults] = useState<Product[]>([])
+  const [editProductPopoverOpen, setEditProductPopoverOpen] = useState(false)
+  const [isEditSearching, setIsEditSearching] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
 
   // Helper: Get available stock for a product (checks localStock first, then original)
   const getAvailableStock = useCallback((barcode: string, originalStock: number): number => {
@@ -500,8 +510,7 @@ export default function Packaging() {
     productInputRef.current?.focus()
   }, [restoreStock])
 
-  // Handle completing current waybill - save to database
-  // Uses Appwrite Function (Server SDK) to bypass rate limits
+  // Handle completing current waybill - save to database via Appwrite Function
   const handleCompleteWaybill = useCallback(async () => {
     if (!currentWaybill || currentItems.length === 0) {
       toast.error(t('packaging.scanAtLeastOne'))
@@ -514,9 +523,14 @@ export default function Packaging() {
 
       const dateStr = formatDateToString(selectedDate)
 
-      // Calculate stock updates for the function
-      // For bundles: deduct from each component
-      // For single products: deduct 1
+      // Build items array for the function
+      const items = currentItems.map(item => ({
+        product_barcode: item.barcode,
+        product_name: item.productName,
+      }))
+
+      // Build stock updates array (product_id + deduct_amount)
+      // Uses Map to aggregate duplicate products (same product scanned multiple times)
       const stockUpdatesMap = new Map<string, number>()
       for (const item of currentItems) {
         if (item.isBundle && item.bundleComponents) {
@@ -529,50 +543,36 @@ export default function Packaging() {
           stockUpdatesMap.set(item.product.$id, current + 1)
         }
       }
-
       const stockUpdates = Array.from(stockUpdatesMap.entries()).map(
         ([product_id, deduct_amount]) => ({ product_id, deduct_amount })
       )
 
-      // Call Appwrite Function - handles everything server-side with NO RATE LIMITS:
-      // - Creates packaging record
-      // - Creates all items
-      // - Updates all product stocks
-      // - Creates single audit log
-      const { record: newRecord, items: savedDbItems, stockUpdateSuccess } =
-        await packagingRecordService.createWithItemsViaFunction(
-          {
-            packaging_date: dateStr,
-            waybill_number: currentWaybill,
-          },
-          currentItems.map((item) => ({
-            product_barcode: item.barcode,
-            product_name: item.productName,
-          })),
-          stockUpdates
-        )
+      // Create record, items, and update stock via Appwrite Function (no rate limits)
+      const result = await packagingRecordService.createWithItemsViaFunction(
+        { packaging_date: dateStr, waybill_number: currentWaybill },
+        items,
+        stockUpdates
+      )
 
-      if (!stockUpdateSuccess) {
-        console.error('Stock deduction had errors')
+      if (!result.stockUpdateSuccess) {
+        console.error('Stock deduction failed in function')
         toast.error(t('packaging.stockDeductionError'))
       }
 
-      // Map saved items with product info for display
-      const savedItems: PackagingItemWithProduct[] = savedDbItems.map(
-        (savedItem, index) => ({
-          ...savedItem,
-          product_name: currentItems[index].productName,
-          is_bundle: currentItems[index].isBundle,
-          bundle_components: currentItems[index].bundleComponents,
-        })
-      )
+      // Build saved items with product info for display
+      const savedItems: PackagingItemWithProduct[] = result.items.map((savedItem, index) => ({
+        ...savedItem,
+        product_name: currentItems[index].productName,
+        is_bundle: currentItems[index].isBundle,
+        bundle_components: currentItems[index].bundleComponents,
+      }))
 
       // Invalidate products cache to reflect stock changes
       await queryClient.invalidateQueries({ queryKey: ['products'] })
 
       // Add to today's records
       const completedRecord: PackagingRecordWithProducts = {
-        ...newRecord,
+        ...result.record,
         items: savedItems,
       }
       setTodayRecords((prev) => [completedRecord, ...prev])
@@ -717,18 +717,18 @@ export default function Packaging() {
     return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [currentWaybill, currentItems.length, productInput, handleWaybillSubmit, handleProductSubmit, handleCompleteWaybill, productNotFoundBarcode, waybillExistsNumber, insufficientStockItems, deleteRecord])
 
-  // Handle delete record - uses Appwrite Function for no rate limits
+  // Handle delete record via Appwrite Function
   const handleDeleteRecord = async () => {
     if (!deleteRecord) return
 
     try {
       setIsSubmitting(true)
 
-      // Delete via Appwrite Function - handles record deletion, item deletion, and stock restoration
+      // Delete the packaging record and restore stock via Appwrite Function
       const result = await packagingRecordService.deleteViaFunction(deleteRecord.$id, true)
 
       if (!result.stockRestoreSuccess) {
-        console.error('Stock restoration had errors')
+        console.error('Stock restoration failed in function')
         toast.error(t('packaging.stockRestoreError'))
       }
 
@@ -803,7 +803,7 @@ export default function Packaging() {
     setEditItems((prev) => prev.filter((_, i) => i !== index))
   }
 
-  // Submit edit changes
+  // Submit edit changes via Appwrite Function
   const handleEditSubmit = async () => {
     if (!editRecord) return
 
@@ -820,26 +820,26 @@ export default function Packaging() {
     try {
       setIsUpdating(true)
 
-      // Update the waybill number if changed
-      if (editWaybillNumber !== editRecord.waybill_number) {
-        await packagingRecordService.update(editRecord.$id, {
-          waybill_number: editWaybillNumber,
-        })
-      }
-
-      // Check if items changed
+      // Check what changed
+      const waybillChanged = editWaybillNumber !== editRecord.waybill_number
       const originalBarcodes = editRecord.items.map((i) => i.product_barcode).sort()
       const newBarcodes = editItems.map((i) => i.barcode).sort()
       const itemsChanged =
         originalBarcodes.length !== newBarcodes.length ||
         originalBarcodes.some((b, i) => b !== newBarcodes[i])
 
-      if (itemsChanged) {
-        await packagingRecordService.updateItems(
+      // Only call function if something changed
+      if (waybillChanged || itemsChanged) {
+        // Update via Appwrite Function (no rate limits)
+        await packagingRecordService.updateViaFunction(
           editRecord.$id,
-          editItems.map((item) => ({
-            product_barcode: item.barcode,
-          }))
+          waybillChanged ? { waybill_number: editWaybillNumber } : undefined,
+          itemsChanged
+            ? editItems.map((item) => ({
+                product_barcode: item.barcode,
+                product_name: item.productName,
+              }))
+            : undefined
         )
       }
 
