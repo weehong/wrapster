@@ -313,6 +313,12 @@ export const packagingRecordService = {
         throw new Error(response.error || 'Function execution failed')
       }
 
+      // Invalidate cache for the deleted record's date
+      const packagingDate = response.deleted?.packaging_date
+      if (packagingDate) {
+        await this.refreshCache(packagingDate)
+      }
+
       return {
         success: true,
         itemsDeleted: response.deleted?.items_count || 0,
