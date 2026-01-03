@@ -170,7 +170,12 @@
     "sending": "Sending...",
     "emailQueued": "Email queued for delivery",
     "emailError": "Failed to send email",
-    "addRecipientsError": "Please add at least one recipient"
+    "addRecipientsError": "Please add at least one recipient",
+    "deleteReport": "Delete Report",
+    "deleteReportTitle": "Delete Report",
+    "deleteReportMessage": "Are you sure you want to delete the report for \"{{dateRange}}\"? This will permanently remove both the Excel and PDF files. This action cannot be undone.",
+    "deleteSuccess": "Report deleted successfully",
+    "deleteError": "Failed to delete report"
   },
   "login": {
     "title": "Login",

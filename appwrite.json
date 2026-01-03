@@ -166,6 +166,50 @@
                 "databases.read",
                 "databases.write"
             ]
+        },
+        {
+            "$id": "delete-report",
+            "name": "Delete Report - Development",
+            "runtime": "node-18.0",
+            "execute": [
+                "users"
+            ],
+            "events": [],
+            "schedule": "",
+            "timeout": 60,
+            "enabled": true,
+            "logging": true,
+            "entrypoint": "src/main.js",
+            "commands": "npm install",
+            "path": "functions/delete-report",
+            "scopes": [
+                "databases.read",
+                "databases.write",
+                "files.read",
+                "files.write"
+            ]
+        },
+        {
+            "$id": "delete-report-prod",
+            "name": "Delete Report - Production",
+            "runtime": "node-18.0",
+            "execute": [
+                "users"
+            ],
+            "events": [],
+            "schedule": "",
+            "timeout": 60,
+            "enabled": true,
+            "logging": true,
+            "entrypoint": "src/main.js",
+            "commands": "npm install",
+            "path": "functions/delete-report",
+            "scopes": [
+                "databases.read",
+                "databases.write",
+                "files.read",
+                "files.write"
+            ]
         }
     ],
     "tablesDB": [

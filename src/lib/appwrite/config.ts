@@ -12,5 +12,5 @@ export const storage = new Storage(client)
 export const messaging = new Messaging(client)
 export const functions = new Functions(client)
 
-export { ID, Query } from 'appwrite'
+export { ID, Query, ExecutionMethod } from 'appwrite'
 export default client

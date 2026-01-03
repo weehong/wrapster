@@ -1,8 +1,6 @@
-import { ExecutionMethod, Functions } from 'appwrite'
-
-import client, { storage } from './config'
+import { functions, storage, ExecutionMethod } from './config'
 import { databaseService, Query } from './database'
-import { auditLogService } from './audit-log'
+import { auditLogService, getAuditUserContext } from './audit-log'
 
 import type {
   ImportJob,
@@ -13,9 +11,8 @@ import type {
 } from '@/types/job'
 import { COLLECTIONS } from '@/types/job'
 
-const functions = new Functions(client)
-
 const FUNCTION_ID = import.meta.env.VITE_APPWRITE_QUEUE_FUNCTION_ID || 'queue-product-job'
+const DELETE_REPORT_FUNCTION_ID = import.meta.env.VITE_APPWRITE_DELETE_REPORT_FUNCTION_ID || 'delete-report'
 const BUCKET_ID = import.meta.env.VITE_APPWRITE_BUCKET_ID
 
 /**
@@ -530,6 +527,49 @@ export const jobService = {
         status: 'failure',
         error_message: error instanceof Error ? error.message : 'Unknown error',
       }).catch(console.error)
+      throw error
+    }
+  },
+
+  /**
+   * Delete report jobs and their files via server-side function
+   * This uses the API key to bypass permission restrictions for files
+   * created by the server-side triggers.
+   */
+  async deleteReportViaFunction(
+    jobIds: string[],
+    fileIds: (string | null)[]
+  ): Promise<{ success: boolean; jobsDeleted: number; filesDeleted: number }> {
+    const userContext = getAuditUserContext()
+
+    const payload = {
+      job_ids: jobIds,
+      file_ids: fileIds.filter(Boolean),
+      user_id: userContext?.user_id || '',
+      user_email: userContext?.user_email,
+      session_id: userContext?.session_id,
+    }
+
+    try {
+      const execution = await functions.createExecution(
+        DELETE_REPORT_FUNCTION_ID,
+        JSON.stringify(payload),
+        false // synchronous execution
+      )
+
+      const response = JSON.parse(execution.responseBody)
+
+      if (!response.success) {
+        throw new Error(response.error || 'Function execution failed')
+      }
+
+      return {
+        success: true,
+        jobsDeleted: response.jobs_deleted || 0,
+        filesDeleted: response.files_deleted || 0,
+      }
+    } catch (error) {
+      console.error('Delete report function error:', error)
       throw error
     }
   },

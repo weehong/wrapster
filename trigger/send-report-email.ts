@@ -70,7 +70,7 @@ export const sendReportEmailTask = task({
     await markJobFailed(payload.jobId, error instanceof Error ? error.message : "Task failed after all retries");
   },
   run: async (payload: SendReportEmailPayload) => {
-    const { jobId, fileId, recipients, dateRange } = payload;
+    const { jobId, userId, fileId, recipients, dateRange } = payload;
     const { databases, storage } = createAppwriteClient();
     const bucketId = process.env.APPWRITE_BUCKET_ID!;
 
