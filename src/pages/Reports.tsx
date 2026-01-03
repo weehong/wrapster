@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { format, formatDistanceToNow, startOfDay } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Download, FileSpreadsheet, FileText, Loader2, Mail, Send, X } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, Loader2, Mail, Send, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
@@ -12,9 +12,19 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { EmailRecipientInput } from '@/components/EmailRecipientInput'
 import { useAuth } from '@/contexts/AuthContext'
-import { useActiveJobs, useCompletedReportExports, useDownloadExport, useQueueReportExport, useQueueSendReportEmail } from '@/hooks/use-jobs'
+import { useActiveJobs, useCompletedReportExports, useDeleteReportViaFunction, useDownloadExport, useQueueReportExport, useQueueSendReportEmail } from '@/hooks/use-jobs'
 import { cn } from '@/lib/utils'
 import type { ParsedJob } from '@/types/job'
 
@@ -92,12 +102,21 @@ export default function Reports() {
   const [emailingGroupKey, setEmailingGroupKey] = useState<string | null>(null)
   const [emailRecipients, setEmailRecipients] = useState<string[]>([])
 
+  // Delete state
+  const [deleteGroup, setDeleteGroup] = useState<{
+    dateRange: string
+    excel: ParsedJob | null
+    pdf: ParsedJob | null
+  } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   const today = startOfDay(new Date())
 
   // Async job hooks
   const queueReportExport = useQueueReportExport()
   const downloadExport = useDownloadExport()
   const queueSendReportEmail = useQueueSendReportEmail()
+  const deleteReportViaFunction = useDeleteReportViaFunction()
   const { data: activeJobs = [] } = useActiveJobs(user?.$id || '', !!user)
   const hasActiveJobs = activeJobs.some(
     (job) => job.status === 'pending' || job.status === 'processing'
@@ -208,6 +227,39 @@ export default function Reports() {
     } catch (err) {
       console.error('Error sending email:', err)
       toast.error(t('reports.emailError'))
+    }
+  }
+
+  const handleDeleteReport = async () => {
+    if (!deleteGroup) return
+
+    try {
+      setIsDeleting(true)
+
+      // Collect job IDs and file IDs to delete
+      const jobIds: string[] = []
+      const fileIds: (string | null)[] = []
+
+      if (deleteGroup.excel) {
+        jobIds.push(deleteGroup.excel.$id)
+        fileIds.push(deleteGroup.excel.result_file_id)
+      }
+
+      if (deleteGroup.pdf) {
+        jobIds.push(deleteGroup.pdf.$id)
+        fileIds.push(deleteGroup.pdf.result_file_id)
+      }
+
+      // Delete via server-side function (uses API key to delete files)
+      await deleteReportViaFunction.mutateAsync({ jobIds, fileIds })
+
+      toast.success(t('reports.deleteSuccess'))
+      setDeleteGroup(null)
+    } catch (err) {
+      console.error('Error deleting report:', err)
+      toast.error(t('reports.deleteError'))
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -347,7 +399,7 @@ export default function Reports() {
                           </p>
                           <p className="text-xs text-muted-foreground">{user?.name || user?.email}</p>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="grid grid-cols-2 gap-1">
                           {group.excel && (
                             <Button
                               variant="ghost"
@@ -382,6 +434,19 @@ export default function Reports() {
                               <Mail className="size-5 text-blue-600" />
                             </Button>
                           )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeleteGroup({
+                              dateRange: group.dateRange,
+                              excel: group.excel,
+                              pdf: group.pdf,
+                            })}
+                            disabled={isDeleting}
+                            title={t('reports.deleteReport')}
+                          >
+                            <Trash2 className="size-5 text-destructive" />
+                          </Button>
                         </div>
                       </div>
 
@@ -436,6 +501,31 @@ export default function Reports() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={!!deleteGroup}
+        onOpenChange={(open) => !open && setDeleteGroup(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('reports.deleteReportTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('reports.deleteReportMessage', { dateRange: deleteGroup?.dateRange })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteReport}
+              disabled={isDeleting}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {isDeleting ? t('products.deleting') : t('common.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

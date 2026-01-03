@@ -269,6 +269,33 @@ export function useDeleteJob() {
 }
 
 /**
+ * Hook to delete report jobs and files via server-side function
+ * This bypasses permission restrictions for files created by triggers
+ */
+export function useDeleteReportViaFunction() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      jobIds,
+      fileIds,
+    }: {
+      jobIds: string[]
+      fileIds: (string | null)[]
+    }) => jobService.deleteReportViaFunction(jobIds, fileIds),
+    onSuccess: () => {
+      // Invalidate all job-related queries
+      queryClient.invalidateQueries({
+        queryKey: [JOBS_QUERY_KEY],
+      })
+      queryClient.invalidateQueries({
+        queryKey: [ACTIVE_JOBS_QUERY_KEY],
+      })
+    },
+  })
+}
+
+/**
  * Helper to get job status color
  */
 export function getJobStatusColor(status: JobStatus): string {

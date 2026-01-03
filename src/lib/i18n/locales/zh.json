@@ -170,7 +170,12 @@
     "sending": "发送中...",
     "emailQueued": "邮件已加入发送队列",
     "emailError": "发送邮件失败",
-    "addRecipientsError": "请添加至少一个收件人"
+    "addRecipientsError": "请添加至少一个收件人",
+    "deleteReport": "删除报告",
+    "deleteReportTitle": "删除报告",
+    "deleteReportMessage": "您确定要删除 \"{{dateRange}}\" 的报告吗？这将永久删除 Excel 和 PDF 文件。此操作无法撤销。",
+    "deleteSuccess": "报告已成功删除",
+    "deleteError": "删除报告失败"
   },
   "login": {
     "title": "登录",
