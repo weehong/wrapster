@@ -133,6 +133,12 @@ export default function Packaging() {
   // Waybill exists dialog state
   const [waybillExistsNumber, setWaybillExistsNumber] = useState<string | null>(null)
 
+  // Waybill previous usage warning state
+  const [waybillWarning, setWaybillWarning] = useState<{
+    waybill: string
+    previousDate: string
+  } | null>(null)
+
   // Insufficient stock dialog state
   const [insufficientStockItems, setInsufficientStockItems] = useState<InsufficientStockItem[] | null>(null)
 
@@ -335,7 +341,7 @@ export default function Packaging() {
   }, [currentWaybill])
 
   // Handle waybill submission (state only, no database)
-  const handleWaybillSubmit = useCallback(async (scannedBarcode?: string) => {
+  const handleWaybillSubmit = useCallback(async (scannedBarcode?: string, skipWarning = false) => {
     const waybillToSubmit = (scannedBarcode ?? waybillInput).trim()
 
     if (!waybillToSubmit) {
@@ -359,6 +365,24 @@ export default function Packaging() {
         setWaybillExistsNumber(waybillToSubmit)
         setWaybillInput('')
         return
+      }
+
+      // Check if waybill was used on a previous date (only if not skipping warning)
+      if (!skipWarning) {
+        const previousUsage = await packagingRecordService.getWaybillPreviousUsage(
+          waybillToSubmit,
+          dateStr
+        )
+
+        if (previousUsage) {
+          // Show warning dialog and wait for user confirmation
+          setWaybillWarning({
+            waybill: waybillToSubmit,
+            previousDate: previousUsage.packaging_date,
+          })
+          setWaybillInput('')
+          return
+        }
       }
 
       // Store in state only (no database record yet)
@@ -1505,6 +1529,50 @@ export default function Packaging() {
               }}
             >
               {t('common.ok')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Waybill Previous Usage Warning Dialog */}
+      <AlertDialog
+        open={!!waybillWarning}
+        onOpenChange={(open) => {
+          if (!open) {
+            setWaybillWarning(null)
+            waybillInputRef.current?.focus()
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('packaging.waybillWarningTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('packaging.waybillWarningMessage', {
+                waybill: waybillWarning?.waybill,
+                date: waybillWarning?.previousDate,
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setWaybillWarning(null)
+                waybillInputRef.current?.focus()
+              }}
+            >
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const waybill = waybillWarning?.waybill
+                setWaybillWarning(null)
+                if (waybill) {
+                  handleWaybillSubmit(waybill, true)
+                }
+              }}
+            >
+              {t('common.proceed')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
