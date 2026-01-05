@@ -561,64 +561,37 @@ export const packagingRecordService = {
   },
 
   /**
-   * Get packaging records by date with cache-aside pattern
-   * - For today: Query database directly for real-time data
-   * - For past dates: Check cache first, fallback to database and update cache
-   * Returns records with product names and bundle info included
+   * Get packaging records by date with cache-aside pattern.
+   * Cache is generated at midnight when day closes, so today always hits database.
    */
   async getPackagingByDate(date: string): Promise<PackagingRecordWithProducts[]> {
     const today = getTodayDate()
-    console.log(`[Packaging] getPackagingByDate called for: ${date}, today is: ${today}`)
 
-    // For today's date, always fetch from database for real-time editing
-    if (date === today) {
-      console.log(`[Packaging] Fetching TODAY from database (no cache)`)
-      const records = await this.listByDate(date)
-      const enrichedRecords = await this.enrichWithProducts(records)
-
-      auditLogService.log('packaging_view_by_date', 'packaging_record', {
-        action_details: {
-          date,
-          recordCount: enrichedRecords.length,
-          source: 'database',
-        },
-      }).catch(console.error)
-
-      return enrichedRecords
+    // Skip cache lookup for today - today's data is never cached (changes until midnight)
+    if (date !== today) {
+      const cachedData = await packagingCacheService.get(date)
+      if (cachedData !== null) {
+        auditLogService.log('packaging_view_by_date', 'packaging_record', {
+          action_details: { date, recordCount: cachedData.length, source: 'cache' },
+        }).catch(console.error)
+        return cachedData
+      }
     }
 
-    // For historical dates, try cache first
-    console.log(`[Packaging] Historical date - checking cache...`)
-    const cachedData = await packagingCacheService.get(date)
-    if (cachedData !== null) {
-      console.log(`[Packaging] Cache HIT! Returning ${cachedData.length} records`)
-      auditLogService.log('packaging_view_by_date', 'packaging_record', {
-        action_details: {
-          date,
-          recordCount: cachedData.length,
-          source: 'cache',
-        },
-      }).catch(console.error)
-
-      return cachedData
-    }
-
-    // Cache miss: fetch from database and enrich with product info
-    console.log(`[Packaging] Cache MISS - fetching from database...`)
+    // Fetch from database (always for today, or cache miss for historical dates)
     const records = await this.listByDate(date)
     const enrichedRecords = await this.enrichWithProducts(records)
 
-    // Store in cache for future requests (async, don't wait)
-    console.log(`[Packaging] Storing ${enrichedRecords.length} records in cache...`)
-    packagingCacheService.set(date, enrichedRecords).catch((error) => {
-      console.error('Failed to update packaging cache:', error)
-    })
+    // Only cache historical dates (today's data changes until midnight closure)
+    if (date !== today) {
+      packagingCacheService.set(date, enrichedRecords).catch(console.error)
+    }
 
     auditLogService.log('packaging_view_by_date', 'packaging_record', {
       action_details: {
         date,
         recordCount: enrichedRecords.length,
-        source: 'database_cache_miss',
+        source: date === today ? 'database' : 'database_cache_miss',
       },
     }).catch(console.error)
 

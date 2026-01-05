@@ -103,6 +103,8 @@
     "productNotFoundMessage": "The product with barcode \"{{barcode}}\" does not exist in the database. Please scan a valid product barcode.",
     "waybillExistsTitle": "Waybill Already Exists",
     "waybillExistsMessage": "The waybill \"{{waybill}}\" already exists for this date. Please enter a different waybill number.",
+    "waybillExistsTodayTitle": "Waybill Already Exists Today",
+    "waybillExistsTodayMessage": "The waybill \"{{waybill}}\" already exists for today's date. Do you want to proceed anyway?",
     "waybillWarningTitle": "Waybill Previously Used",
     "waybillWarningMessage": "The waybill \"{{waybill}}\" was previously used on {{date}}. Do you want to proceed anyway?",
     "recordSaved": "Packaging record saved",
