@@ -354,17 +354,35 @@ export default function Packaging() {
       setError(null)
 
       const dateStr = formatDateToString(selectedDate)
+      const todayStr = formatDateToString(new Date())
+      const isForToday = dateStr === todayStr
 
-      // Check if waybill already exists for the selected date in database
-      const existing = await packagingRecordService.getByDateAndWaybill(
-        dateStr,
-        waybillToSubmit
-      )
+      // Check if waybill already exists for today's date (priority check)
+      if (!skipWarning) {
+        const existingToday = await packagingRecordService.getByDateAndWaybill(
+          todayStr,
+          waybillToSubmit
+        )
 
-      if (existing) {
-        setWaybillExistsNumber(waybillToSubmit)
-        setWaybillInput('')
-        return
+        if (existingToday) {
+          setWaybillExistsNumber(waybillToSubmit)
+          setWaybillInput('')
+          return
+        }
+      }
+
+      // Check if waybill already exists for the selected date (if not today)
+      if (!isForToday) {
+        const existing = await packagingRecordService.getByDateAndWaybill(
+          dateStr,
+          waybillToSubmit
+        )
+
+        if (existing) {
+          setWaybillExistsNumber(waybillToSubmit)
+          setWaybillInput('')
+          return
+        }
       }
 
       // Check if waybill was used on a previous date (only if not skipping warning)
@@ -1504,7 +1522,7 @@ export default function Packaging() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Waybill Exists Dialog */}
+      {/* Waybill Exists Today Warning Dialog */}
       <AlertDialog
         open={!!waybillExistsNumber}
         onOpenChange={(open) => {
@@ -1516,19 +1534,33 @@ export default function Packaging() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t('packaging.waybillExistsTitle')}</AlertDialogTitle>
+            <AlertDialogTitle>{t('packaging.waybillExistsTodayTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('packaging.waybillExistsMessage', { waybill: waybillExistsNumber })}
+              {t('packaging.waybillExistsTodayMessage', { waybill: waybillExistsNumber })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction
+            <AlertDialogCancel
               onClick={() => {
                 setWaybillExistsNumber(null)
                 waybillInputRef.current?.focus()
               }}
             >
-              {t('common.ok')}
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const waybill = waybillExistsNumber
+                setWaybillExistsNumber(null)
+                if (waybill) {
+                  // Proceed with the waybill even though it exists
+                  setCurrentWaybill(waybill)
+                  setCurrentItems([])
+                  setTimeout(() => productInputRef.current?.focus(), 0)
+                }
+              }}
+            >
+              {t('common.proceed')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
