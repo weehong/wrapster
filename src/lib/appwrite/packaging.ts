@@ -376,6 +376,26 @@ export const packagingRecordService = {
   },
 
   /**
+   * Check if a waybill exists on any previous dates (before the given date)
+   * Returns the most recent previous usage if found
+   */
+  async getWaybillPreviousUsage(
+    waybill: string,
+    beforeDate: string
+  ): Promise<PackagingRecord | null> {
+    const result = await databaseService.listDocuments<PackagingRecord>(
+      COLLECTIONS.PACKAGING_RECORDS,
+      [
+        Query.equal('waybill_number', waybill),
+        Query.lessThan('packaging_date', beforeDate),
+        Query.orderDesc('packaging_date'),
+        Query.limit(1),
+      ]
+    )
+    return result.documents[0] ?? null
+  },
+
+  /**
    * List all packaging records for a specific date (direct database query)
    * Use getPackagingByDate for cache-aside pattern
    * Optimized: Fetches all items in a single query instead of N+1
