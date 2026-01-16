@@ -18,7 +18,7 @@ module.exports = async (context) => {
       return res.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const { action, fileId, userId, filters, startDate, endDate, format, recipients, dateRange } = body;
+    const { action, fileId, userId, filters, startDate, endDate, format, recipients, dateRange, jobId: preGeneratedJobId } = body;
 
     // Validate required fields
     if (!action || !userId) {
@@ -73,10 +73,11 @@ module.exports = async (context) => {
     }
 
     // Create job record for tracking
+    // Use pre-generated job ID if provided (for async execution), otherwise generate one
     const job = await databases.createDocument(
       databaseId,
       COLLECTIONS.IMPORT_JOBS,
-      ID.unique(),
+      preGeneratedJobId || ID.unique(),
       jobData
     );
 

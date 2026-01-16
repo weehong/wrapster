@@ -1,4 +1,4 @@
-import { functions, storage, ExecutionMethod } from './config'
+import { functions, storage, ExecutionMethod, ID } from './config'
 import { databaseService, Query } from './database'
 import { auditLogService, getAuditUserContext } from './audit-log'
 
@@ -155,9 +155,12 @@ export const jobService = {
     format: 'excel' | 'pdf' = 'excel'
   ): Promise<QueueJobResponse> {
     const action = format === 'pdf' ? 'export-reporting-pdf' : 'export-reporting-excel'
+    // Pre-generate job ID so we can return it immediately with async execution
+    const jobId = ID.unique()
 
     try {
-      const execution = await functions.createExecution(
+      // Use async execution (true) to avoid 30s timeout on synchronous functions
+      await functions.createExecution(
         FUNCTION_ID,
         JSON.stringify({
           action,
@@ -165,32 +168,17 @@ export const jobService = {
           startDate,
           endDate,
           format,
+          jobId, // Pass pre-generated job ID
         }),
-        false, // async
+        true, // async execution - function runs in background
         '/', // path
         ExecutionMethod.POST // method
       )
 
-      // Check if function executed successfully
-      if (execution.status === 'failed') {
-        console.error('Function execution failed:', execution.errors)
-        throw new Error(`Function failed: ${execution.errors || 'Unknown error'}`)
-      }
-
-      // Check for empty response
-      if (!execution.responseBody) {
-        console.error('Function returned empty response:', execution)
-        throw new Error('Function returned empty response. Check function logs in Appwrite Console.')
-      }
-
-      const response = JSON.parse(execution.responseBody) as QueueJobResponse
-
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to queue report export job')
-      }
-
+      // With async execution, we return immediately with the pre-generated job ID
+      // The function will create the job document with this ID and process it
       auditLogService.log('job_queue_report_export', 'job', {
-        resource_id: response.jobId,
+        resource_id: jobId,
         action_details: {
           action,
           startDate,
@@ -199,7 +187,7 @@ export const jobService = {
         },
       }).catch(console.error)
 
-      return response
+      return { success: true, jobId }
     } catch (error) {
       auditLogService.log('job_queue_report_export', 'job', {
         action_details: {
